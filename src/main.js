@@ -1,467 +1,733 @@
-import { ThreeEngine } from './engine/ThreeEngine.js';
-import { semanticClassifier } from './magicTranslator.js';
-import { GameRunner } from './engine/GameRunner.js';
-import { GamePlatformer } from './engine/GamePlatformer.js';
-import { GameShooter } from './engine/GameShooter.js';
-import { GameRacing } from './engine/GameRacing.js';
-import { GameMaze } from './engine/GameMaze.js';
-import { GameChess3D } from './engine/GameChess.js';
-import { Game2DEngine } from './engine/Game2D.js';
-import { soundManager } from './audio.js';
-import { AIGameDiscoveryEngine } from './gameDatabase.js';
+import { ThreeEngine } from '/src/engine/ThreeEngine.js';
+import { semanticClassifier } from '/src/magicTranslator.js';
+import { GameRunner } from '/src/engine/GameRunner.js';
+import { GamePlatformer } from '/src/engine/GamePlatformer.js';
+import { GameShooter } from '/src/engine/GameShooter.js';
+import { GameRacing } from '/src/engine/GameRacing.js';
+import { GameMaze } from '/src/engine/GameMaze.js';
+import { GameChess3D } from '/src/engine/GameChess.js';
+import { Game2DEngine } from '/src/engine/Game2D.js';
 
-class InfiniteArcadeApp {
-  constructor() {
-    this.webglCanvas = document.getElementById('webgl-canvas');
-    this.canvas2D = document.getElementById('canvas-2d');
-    this.container3DCard = document.getElementById('container-3d-card');
-    this.container2DCard = document.getElementById('container-2d-card');
-    
-    // Dedicated 3D Three.js Engine on #webgl-canvas
-    this.engine = new ThreeEngine(this.webglCanvas);
-    this.currentGameInstance = null;
-    this.activeStudioTab = '3D'; // '3D' or '2D'
+const API_BASE = 'http://localhost:3001/api';
 
-    this.scoreElement = document.getElementById('canvas-score');
-    this.highScoreElement = document.getElementById('canvas-highscore');
-    this.healthContainer = document.getElementById('hud-health-container');
-    this.healthBar = document.getElementById('hud-health-bar');
-    this.controlsGuideText = document.getElementById('controls-guide-text');
+// ============================================
+//   App State
+// ============================================
+window._app = {
+  currentPage: 'home',
+  currentGame: null,
+  threeEngine: null,
+  activeStudioTab: '2D',
+  selectedArchetype: 'CUSTOM_AI',
+  lastSearchPrompt: '',
+  lastSearchResult: null,
+  historyOpen: false,
+  isBackendOnline: false,
+};
 
-    this.hudGameType = document.getElementById('hud-game-type');
-    this.discoveryDeck = document.getElementById('discovery-deck');
+// ============================================
+//   NAVIGATION
+// ============================================
+window.navigateTo = function(page) {
+  const app = window._app;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById(`page-${page}`);
+  if (el) el.classList.add('active');
+  app.currentPage = page;
 
-    this.overlayModal = document.getElementById('overlay-modal');
-    this.modalTitle = document.getElementById('modal-title');
-    this.modalSubtitle = document.getElementById('modal-subtitle');
-    this.modalFinalScore = document.getElementById('modal-final-score');
-    this.modalHighScore = document.getElementById('modal-high-score');
-
-    this.tab3D = document.getElementById('tab-3d');
-    this.tab2D = document.getElementById('tab-2d');
-    this.btnGenerateText = document.getElementById('btn-generate-text');
-
-    // Generating Overlay elements
-    this.generatingModal = document.getElementById('generating-modal');
-    this.genPromptText = document.getElementById('gen-prompt-text');
-    this.genProgressBar = document.getElementById('gen-progress-bar');
-
-    // Library Modal
-    this.libraryModal = document.getElementById('library-modal');
-
-    this.bindEvents();
-    
-    // Launch default game on startup
-    this.compileAndLaunchGame("a multiplayer shooting game with futuristic weapons", false);
-    this.startLoop();
+  if (page === 'generate') {
+    setTimeout(() => {
+      if (!app.threeEngine) {
+        app.threeEngine = new ThreeEngine(document.getElementById('webgl-canvas'));
+      }
+    }, 100);
+    checkBackend();
   }
+};
 
-  bindEvents() {
-    // 1. Studio Dimension Tabs (3D vs 2D)
-    this.tab3D.addEventListener('click', () => {
-      this.switchStudioTab('3D');
-    });
+window.homeCardClick = function(prompt) {
+  window.navigateTo('search');
+  setTimeout(() => {
+    document.getElementById('search-main-input').value = prompt;
+    window.doSearch();
+  }, 100);
+};
 
-    this.tab2D.addEventListener('click', () => {
-      this.switchStudioTab('2D');
-    });
+// ============================================
+//   BACKEND
+// ============================================
+async function checkBackend() {
+  try {
+    const res = await fetch(`${API_BASE.replace('/api','')}/health`);
+    window._app.isBackendOnline = res.ok;
+  } catch { window._app.isBackendOnline = false; }
+  updateBackendBadge();
+}
 
-    // Top Navigation Links
-    document.getElementById('nav-home')?.addEventListener('click', () => this.switchStudioTab('3D'));
-    document.getElementById('nav-discovery')?.addEventListener('click', () => {
-      const promptInput = document.getElementById('prompt-input');
-      promptInput.focus();
-    });
-    document.getElementById('nav-3d')?.addEventListener('click', () => this.switchStudioTab('3D'));
-    document.getElementById('nav-2d')?.addEventListener('click', () => this.switchStudioTab('2D'));
-
-    // Header Search Bar
-    const headerSearchBar = document.getElementById('header-search-bar');
-    if (headerSearchBar) {
-      headerSearchBar.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          const text = headerSearchBar.value.trim();
-          if (text) {
-            document.getElementById('prompt-input').value = text;
-            this.compileAndLaunchGame(text, true);
-          }
-        }
-      });
-    }
-
-    document.getElementById('btn-header-generate')?.addEventListener('click', () => {
-      const promptInput = document.getElementById('prompt-input');
-      const text = promptInput.value.trim() || "a 2D puzzle game with increasing difficulty";
-      this.compileAndLaunchGame(text, true);
-    });
-
-    // 2. Library Modal Drawer
-    document.getElementById('btn-open-library').addEventListener('click', () => {
-      this.libraryModal.classList.remove('hidden');
-    });
-
-    document.getElementById('btn-close-library').addEventListener('click', () => {
-      this.libraryModal.classList.add('hidden');
-    });
-
-    document.querySelectorAll('.btn-lib-card').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const preset = btn.dataset.libraryPreset;
-        this.libraryModal.classList.add('hidden');
-
-        if (preset.includes('2d') && this.activeStudioTab !== '2D') {
-          this.switchStudioTab('2D');
-        } else if (!preset.includes('2d') && this.activeStudioTab !== '3D') {
-          this.switchStudioTab('3D');
-        }
-
-        const promptInput = document.getElementById('prompt-input');
-        promptInput.value = preset;
-        if (document.activeElement) document.activeElement.blur();
-        this.compileAndLaunchGame(preset, true);
-      });
-    });
-
-    // 3. Generate Game button & Prompt Textarea
-    const promptInput = document.getElementById('prompt-input');
-    const btnGenerate = document.getElementById('btn-generate');
-
-    const handleCompile = () => {
-      let text = promptInput.value.trim();
-      if (!text) {
-        text = this.activeStudioTab === '3D' ? "a multiplayer shooting game with futuristic weapons" : "a 2D puzzle game with increasing difficulty";
-        promptInput.value = text;
-      }
-      
-      if (document.activeElement) document.activeElement.blur();
-      this.compileAndLaunchGame(text, true);
-    };
-
-    btnGenerate.addEventListener('click', handleCompile);
-    promptInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleCompile();
-      }
-    });
-
-    // 4. Director Chat Bar Form & Quick Modifiers
-    const modifierForm = document.getElementById('modifier-form');
-    const modifierInput = document.getElementById('modifier-input');
-
-    modifierForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const text = modifierInput.value.trim();
-      if (text) {
-        this.applyDirectorTweak(text);
-        modifierInput.value = '';
-        if (document.activeElement) document.activeElement.blur();
-      }
-    });
-
-    document.querySelectorAll('.btn-mod').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const mod = btn.dataset.mod;
-        this.applyDirectorTweak(mod);
-        if (document.activeElement) document.activeElement.blur();
-      });
-    });
-
-    // 5. Canvas Focus on Click
-    [this.webglCanvas, this.canvas2D].forEach(canvas => {
-      canvas.addEventListener('click', () => {
-        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
-          document.activeElement.blur();
-        }
-      });
-    });
-
-    // 6. Canvas Action Buttons
-    document.getElementById('btn-restart').addEventListener('click', () => {
-      this.restartGame();
-    });
-
-    document.getElementById('btn-modal-restart').addEventListener('click', () => {
-      this.hideModal();
-      this.restartGame();
-    });
-
-    // Fullscreen Toggle
-    document.getElementById('btn-fullscreen').addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else {
-        document.exitFullscreen().catch(() => {});
-      }
-    });
-
-    // Audio Toggle
-    const btnAudio = document.getElementById('btn-audio-toggle');
-    const iconOn = document.getElementById('icon-sound-on');
-    const iconOff = document.getElementById('icon-sound-off');
-
-    btnAudio.addEventListener('click', () => {
-      const isMuted = soundManager.toggleMute();
-      if (isMuted) {
-        iconOn.classList.add('hidden');
-        iconOff.classList.remove('hidden');
-      } else {
-        iconOn.classList.remove('hidden');
-        iconOff.classList.add('hidden');
-        soundManager.init();
-      }
-    });
-  }
-
-  switchStudioTab(tab) {
-    this.activeStudioTab = tab;
-    const promptInput = document.getElementById('prompt-input');
-
-    if (tab === '3D') {
-      this.container3DCard.classList.remove('hidden');
-      this.container2DCard.classList.add('hidden');
-
-      this.tab3D.className = "tab-btn px-4 py-1.5 rounded-full bg-[#1b4d3e] text-white shadow-sm transition";
-      this.tab2D.className = "tab-btn px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition";
-      
-      this.btnGenerateText.textContent = "⚡ DISCOVER & INSTANT GENERATE 3D GAME";
-      promptInput.placeholder = 'e.g. "a multiplayer shooting game with futuristic weapons", "3d subway surfers", "chess 3d"...';
-      
-      this.compileAndLaunchGame("a multiplayer shooting game with futuristic weapons", true);
-    } else {
-      this.container2DCard.classList.remove('hidden');
-      this.container3DCard.classList.add('hidden');
-
-      this.tab2D.className = "tab-btn px-4 py-1.5 rounded-full bg-[#1b4d3e] text-white shadow-sm transition";
-      this.tab3D.className = "tab-btn px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition";
-
-      this.btnGenerateText.textContent = "⚡ DISCOVER & INSTANT GENERATE 2D GAME";
-      promptInput.placeholder = 'e.g. "a 2D puzzle game with increasing difficulty", "2d snake game", "2d pacman"...';
-
-      this.compileAndLaunchGame("a 2D puzzle game with increasing difficulty", true);
-    }
-  }
-
-  renderDiscoveryDeck(promptText) {
-    if (!this.discoveryDeck) return;
-
-    const matches = AIGameDiscoveryEngine.searchAndRecommend(promptText);
-    this.discoveryDeck.innerHTML = '';
-
-    matches.forEach(game => {
-      const card = document.createElement('div');
-      card.className = "bg-white p-3 rounded-2xl border border-slate-200 hover:border-[#2d6a4f] transition shadow-sm flex flex-col justify-between gap-1.5 group";
-
-      card.innerHTML = `
-        <div class="flex items-start justify-between gap-1">
-          <div>
-            <h4 class="text-xs font-extrabold text-[#1b4d3e] group-hover:text-[#2d6a4f] transition">${game.title}</h4>
-            <p class="text-[10px] text-slate-400 font-medium">${game.genre}</p>
-          </div>
-          <span class="text-[9px] font-bold font-mono px-2 py-0.5 rounded-full bg-[#d8f3dc] text-[#1b4d3e]">
-            🎯 ${game.matchPercent}% Match
-          </span>
-        </div>
-        <p class="text-[11px] text-slate-600 line-clamp-2 leading-relaxed font-medium">
-          ${game.description}
-        </p>
-        <div class="flex items-center justify-between pt-1 border-t border-slate-100">
-          <span class="text-[10px] text-slate-400 font-medium">${game.platform}</span>
-          <button data-discovery-preset="${game.tags.join(' ')}" class="btn-play-discovery px-3 py-1 rounded-full bg-[#1b4d3e] hover:bg-[#2d6a4f] text-white font-extrabold text-[10px] shadow-sm transition active:scale-95">
-            ⚡ Play Custom AI Game
-          </button>
-        </div>
-      `;
-
-      this.discoveryDeck.appendChild(card);
-    });
-
-    // Bind click events on discovery cards
-    this.discoveryDeck.querySelectorAll('.btn-play-discovery').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const preset = e.currentTarget.dataset.discoveryPreset;
-        const promptInput = document.getElementById('prompt-input');
-        promptInput.value = preset;
-        this.compileAndLaunchGame(preset, true);
-      });
-    });
-  }
-
-  compileAndLaunchGame(promptText, showLoadingAnimation = true) {
-    this.hideModal();
-
-    if (showLoadingAnimation) {
-      this.showGenerationLoading(promptText, () => {
-        this.executeGameLaunch(promptText);
-      });
-    } else {
-      this.executeGameLaunch(promptText);
-    }
-  }
-
-  showGenerationLoading(promptText, onComplete) {
-    this.genPromptText.textContent = `"${promptText}"`;
-    this.generatingModal.classList.remove('hidden');
-
-    let percent = 0;
-    const duration = this.activeStudioTab === '2D' ? 250 : 350;
-    const intervalTime = 20;
-    const increment = 100 / (duration / intervalTime);
-
-    if (this.genInterval) clearInterval(this.genInterval);
-
-    this.genInterval = setInterval(() => {
-      percent += increment;
-      if (percent >= 100) {
-        percent = 100;
-        clearInterval(this.genInterval);
-        
-        this.genProgressBar.style.width = "100%";
-        onComplete();
-
-        if (this.currentGameInstance && this.currentGameInstance.engine) {
-          this.engine.render();
-        } else if (this.currentGameInstance && this.currentGameInstance.render) {
-          this.currentGameInstance.render();
-        }
-
-        requestAnimationFrame(() => {
-          this.generatingModal.classList.add('hidden');
-        });
-        return;
-      }
-
-      this.genProgressBar.style.width = `${percent}%`;
-    }, intervalTime);
-  }
-
-  executeGameLaunch(promptText) {
-    // Perfect Cleanup & Disposal
-    if (this.currentGameInstance) {
-      this.currentGameInstance.destroy();
-      this.currentGameInstance = null;
-    }
-
-    // Render Search Recommendations Deck
-    this.renderDiscoveryDeck(promptText);
-
-    const config = semanticClassifier.classifyPrompt(promptText, this.activeStudioTab);
-    this.lastPrompt = promptText;
-
-    this.updateStatusTelemetry();
-
-    const callbacks = {
-      onScoreUpdate: (score, highScore) => {
-        this.scoreElement.textContent = score;
-        this.highScoreElement.textContent = highScore;
-      },
-      onGuideUpdate: (guideText) => {
-        this.controlsGuideText.textContent = guideText;
-      },
-      onHealthUpdate: (hp) => {
-        this.healthBar.style.width = `${hp}%`;
-      },
-      onGameOver: (details) => {
-        this.showModal(details);
-      }
-    };
-
-    let modeName = config.perspective;
-
-    if (config.is2D) {
-      if (config.gameModeKey === '2D_SHOOTER' || config.gameModeKey === '2D_TANK') {
-        this.healthContainer.classList.remove('hidden');
-        this.healthContainer.classList.add('flex');
-      } else {
-        this.healthContainer.classList.add('hidden');
-        this.healthContainer.classList.remove('flex');
-      }
-      this.hudGameType.textContent = `02. ${modeName}`;
-      this.currentGameInstance = new Game2DEngine(this.canvas2D, semanticClassifier, callbacks, config.gameModeKey);
-    } else {
-      if (config.gameModeKey === 'CHESS') {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. 3D CHESS STRATEGY";
-        this.currentGameInstance = new GameChess3D(this.engine, semanticClassifier, callbacks);
-      } else if (config.gameModeKey === 'RUNNER') {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. 3D RUNNER CHASE";
-        this.currentGameInstance = new GameRunner(this.engine, semanticClassifier, callbacks);
-      } else if (config.gameModeKey === 'PLATFORMER') {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. 3D PLATFORMER";
-        this.currentGameInstance = new GamePlatformer(this.engine, semanticClassifier, callbacks);
-      } else if (config.gameModeKey === 'SHOOTER') {
-        this.healthContainer.classList.remove('hidden');
-        this.healthContainer.classList.add('flex');
-        this.hudGameType.textContent = "01. TOP-DOWN SHOOTER";
-        this.currentGameInstance = new GameShooter(this.engine, semanticClassifier, callbacks);
-      } else if (config.gameModeKey === 'RACING') {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. TURBO RACING";
-        this.currentGameInstance = new GameRacing(this.engine, semanticClassifier, callbacks);
-      } else if (config.gameModeKey === 'MAZE') {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. 3D MAZE EXPLORER";
-        this.currentGameInstance = new GameMaze(this.engine, semanticClassifier, callbacks);
-      } else {
-        this.healthContainer.classList.add('hidden');
-        this.hudGameType.textContent = "01. 3D RUNNER CHASE";
-        this.currentGameInstance = new GameRunner(this.engine, semanticClassifier, callbacks);
-      }
-    }
-  }
-
-  applyDirectorTweak(modText) {
-    const result = semanticClassifier.interpretLiveTweak(modText);
-    if (result.success) {
-      if (this.currentGameInstance && this.currentGameInstance.engine) {
-        this.engine.applyTheme(result.state.theme);
-      }
-    }
-  }
-
-  restartGame() {
-    if (this.lastPrompt) {
-      this.compileAndLaunchGame(this.lastPrompt, true);
-    }
-  }
-
-  updateStatusTelemetry() {}
-
-  showModal(details) {
-    this.modalTitle.textContent = details.title;
-    this.modalSubtitle.textContent = details.subtitle;
-    this.modalFinalScore.textContent = details.score;
-    this.modalHighScore.textContent = details.highScore;
-    this.overlayModal.classList.remove('hidden');
-  }
-
-  hideModal() {
-    this.overlayModal.classList.add('hidden');
-  }
-
-  startLoop() {
-    let lastTime = performance.now();
-    const animate = (now) => {
-      requestAnimationFrame(animate);
-      const dt = Math.min((now - lastTime) / 1000, 0.1);
-      lastTime = now;
-
-      if (this.currentGameInstance && this.currentGameInstance.active) {
-        this.currentGameInstance.update(dt);
-      }
-
-      // Only render 3D WebGL engine if active game is 3D
-      if (this.currentGameInstance && this.currentGameInstance.engine) {
-        this.engine.render();
-      }
-    };
-    requestAnimationFrame(animate);
+function updateBackendBadge() {
+  const badge = document.getElementById('gen-backend-badge');
+  if (!badge) return;
+  if (window._app.isBackendOnline) {
+    badge.textContent = '🟢 AI Online';
+    badge.style.background = 'rgba(52,211,153,0.15)';
+    badge.style.color = '#34d399';
+  } else {
+    badge.textContent = '🟡 Local Mode';
+    badge.style.background = 'rgba(251,191,36,0.15)';
+    badge.style.color = '#fbbf24';
   }
 }
 
-// Start application when DOM is ready
-window.addEventListener('DOMContentLoaded', () => {
-  new InfiniteArcadeApp();
+// ============================================
+//   SEARCH
+// ============================================
+window.setSearchAndGo = function(prompt) {
+  document.getElementById('search-main-input').value = prompt;
+  window.doSearch();
+};
+
+window.doSearch = async function() {
+  const input = document.getElementById('search-main-input');
+  const prompt = input.value.trim();
+  if (!prompt) return;
+
+  window._app.lastSearchPrompt = prompt;
+  window.showLoading('Searching...', `🧠 AI parsing: "${prompt.slice(0, 40)}..."`);
+
+  const resultsArea = document.getElementById('search-results-area');
+  const emptyState = document.getElementById('search-empty-state');
+  const ctaBanner = document.getElementById('generate-cta-banner');
+
+  if (emptyState) emptyState.classList.add('hidden');
+  if (ctaBanner) ctaBanner.classList.add('hidden');
+  if (resultsArea) {
+    resultsArea.innerHTML = `
+      <div class="results-header">
+        <div class="results-title">Finding matches...</div>
+      </div>
+      <div class="results-grid">
+        ${Array(6).fill('<div class="skeleton skeleton-card"></div>').join('')}
+      </div>`;
+  }
+
+  try {
+    let data = null;
+    try {
+      const res = await fetch(`${API_BASE}/recommend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      if (res.ok) data = await res.json();
+      window._app.isBackendOnline = true;
+    } catch (e) {
+      window._app.isBackendOnline = false;
+    }
+
+    window.hideLoading();
+    window._app.lastSearchResult = data;
+
+    if (data && data.success) {
+      renderSearchResults(data);
+    } else {
+      renderSearchResultsFallback(prompt);
+    }
+  } catch (err) {
+    window.hideLoading();
+    renderSearchResultsFallback(prompt);
+  }
+
+  saveToHistory(prompt);
+};
+
+function renderSearchResults(data) {
+  const { recommendations, prompt } = data;
+  const resultsArea = document.getElementById('search-results-area');
+  const ctaBanner = document.getElementById('generate-cta-banner');
+
+  if (resultsArea) {
+    resultsArea.innerHTML = `
+      <div class="results-header">
+        <div class="results-title">AI Recommendations for "${prompt}"</div>
+        <div class="results-count">${recommendations.length} matches</div>
+      </div>
+      <div class="results-grid" id="recs-grid"></div>`;
+
+    const grid = document.getElementById('recs-grid');
+    recommendations.forEach((game, i) => {
+      const matchColor = game.matchPercentage >= 90 ? '#34d399' : game.matchPercentage >= 75 ? '#60a5fa' : '#fbbf24';
+      const platformStr = Array.isArray(game.platform) ? game.platform.join(' · ') : (game.platform || 'PC');
+      const card = document.createElement('div');
+      card.className = 'result-card fade-in';
+      card.style.animationDelay = `${i * 60}ms`;
+      card.innerHTML = `
+        <div class="result-card-body">
+          <div class="result-card-title">${game.title}</div>
+          <div class="result-card-genre">${game.genre}</div>
+          <div class="result-card-rationale">"${game.rationale || game.description}"</div>
+          <div class="result-card-footer">
+            <span class="result-match" style="background:${matchColor}22;color:${matchColor};border:1px solid ${matchColor}44">${game.matchPercentage}% MATCH</span>
+            <span style="font-size:10px;font-weight:700;color:#64748b">${platformStr}</span>
+            ${game.playUrl ? `<a class="result-visit" href="${game.playUrl}" target="_blank" style="font-family:var(--pixel-font-title);font-size:9px;color:var(--pixel-blue)">VISIT →</a>` : ''}
+          </div>
+        </div>`;
+      grid.appendChild(card);
+    });
+  }
+
+  if (ctaBanner) {
+    ctaBanner.classList.remove('hidden');
+    document.getElementById('cta-scope-gen')?.classList.remove('hidden');
+    document.getElementById('cta-scope-rec')?.classList.add('hidden');
+    const ctaTitle = document.getElementById('cta-title');
+    const ctaDesc = document.getElementById('cta-desc');
+    const genBtn = document.getElementById('btn-generate-from-search');
+    if (ctaTitle) ctaTitle.textContent = `Try a playable version of this?`;
+    if (ctaDesc) ctaDesc.textContent = `Generate a browser-playable game inspired by "${prompt}" — we'll build the closest prototype we can.`;
+    if (genBtn) {
+      genBtn.disabled = false;
+      genBtn.textContent = '⚡ Generate Game';
+    }
+  }
+}
+
+function renderSearchResultsFallback(prompt) {
+  const resultsArea = document.getElementById('search-results-area');
+  if (resultsArea) {
+    resultsArea.innerHTML = `
+      <div class="results-header">
+        <div class="results-title">Results for "${prompt}"</div>
+        <div class="results-count" style="background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">🟡 Local Mode</div>
+      </div>
+      <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:16px;padding:20px;font-size:13px;color:rgba(255,255,255,0.5);display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <span style="font-size:20px">🟡</span>
+        <span>AI backend offline. Start with <code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px">npm run dev:backend</code> for full recommendations.</span>
+      </div>`;
+  }
+
+  const ctaBanner = document.getElementById('generate-cta-banner');
+  if (ctaBanner) {
+    ctaBanner.classList.remove('hidden');
+    document.getElementById('cta-scope-gen')?.classList.remove('hidden');
+    document.getElementById('cta-scope-rec')?.classList.add('hidden');
+    const ctaTitle = document.getElementById('cta-title');
+    const ctaDesc = document.getElementById('cta-desc');
+    const genBtn = document.getElementById('btn-generate-from-search');
+    if (ctaTitle) ctaTitle.textContent = 'Try a playable version of this?';
+    if (ctaDesc) ctaDesc.textContent = `Generate a browser prototype inspired by "${prompt}".`;
+    if (genBtn) {
+      genBtn.disabled = false;
+      genBtn.textContent = '⚡ Generate Game';
+    }
+  }
+}
+
+window.generateFromSearch = function() {
+  const prompt = window._app.lastSearchPrompt;
+  const data = window._app.lastSearchResult;
+
+  if (data && data.archetype && data.archetype !== 'REC_ONLY') {
+    preselectArchetype(data.archetype);
+  }
+
+  window.navigateTo('generate');
+
+  const ctx = document.getElementById('gen-from-search-ctx');
+  const ctxText = document.getElementById('gen-from-search-text');
+  if (prompt && ctx && ctxText) {
+    ctxText.textContent = `"${prompt}"`;
+    ctx.classList.remove('hidden');
+    document.getElementById('gen-custom-prompt').value = prompt;
+  }
+};
+
+// ============================================
+//   GENERATE PAGE — CONTROLS
+// ============================================
+window._app.selectedArchetype = 'CUSTOM_AI';
+window._app.activeStudioTab = '2D';
+
+window.setDim = function(dim) {
+  window._app.activeStudioTab = dim;
+  document.getElementById('dim-3d').classList.toggle('active', dim === '3D');
+  document.getElementById('dim-2d').classList.toggle('active', dim === '2D');
+  updateArchetypeGrid(dim);
+};
+
+function updateArchetypeGrid(dim) {
+  const grid = document.getElementById('archetype-grid');
+  if (!grid) return;
+  if (dim === '3D') {
+    grid.innerHTML = `
+      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2; background: linear-gradient(135deg, rgba(147,51,234,0.2) 0%, rgba(79,70,229,0.2) 100%); border-color: rgba(168,85,247,0.4); color: #e9d5ff">
+        <span>✨</span>
+        <strong style="font-size:12px;color:#fff">Custom AI LLM Game</strong>
+        <span style="font-size:9px;color:rgba(255,255,255,0.5)">Farmer Sim, Custom Rules, Full LLM Synthesis</span>
+      </button>
+      <button class="archetype-btn" data-key="RUNNER" onclick="selectArchetype(this)"><span>🏃</span>Highway Runner</button>
+      <button class="archetype-btn" data-key="SHOOTER" onclick="selectArchetype(this)"><span>🔫</span>3D Shooter</button>
+      <button class="archetype-btn" data-key="CHESS" onclick="selectArchetype(this)"><span>♟️</span>Chess 3D</button>
+      <button class="archetype-btn" data-key="MAZE" onclick="selectArchetype(this)"><span>🏯</span>Maze</button>
+      <button class="archetype-btn" data-key="PLATFORMER" onclick="selectArchetype(this)"><span>🪄</span>Platformer</button>
+      <button class="archetype-btn" data-key="RACING" onclick="selectArchetype(this)"><span>🏎️</span>Kart Racer</button>`;
+    window._app.selectedArchetype = 'CUSTOM_AI';
+  } else {
+    grid.innerHTML = `
+      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2; background: linear-gradient(135deg, rgba(147,51,234,0.2) 0%, rgba(79,70,229,0.2) 100%); border-color: rgba(168,85,247,0.4); color: #e9d5ff">
+        <span>✨</span>
+        <strong style="font-size:12px;color:#fff">Custom AI LLM Game</strong>
+        <span style="font-size:9px;color:rgba(255,255,255,0.5)">Farmer Sim, Custom Rules, Full LLM Synthesis</span>
+      </button>
+      <button class="archetype-btn" data-key="2D_SHOOTER" onclick="selectArchetype(this)"><span>🚀</span>Space Shooter</button>
+      <button class="archetype-btn" data-key="2D_BRICK" onclick="selectArchetype(this)"><span>🟥</span>Brick Breaker</button>
+      <button class="archetype-btn" data-key="2D_SNAKE" onclick="selectArchetype(this)"><span>🐍</span>Neon Snake</button>
+      <button class="archetype-btn" data-key="2D_PACMAN" onclick="selectArchetype(this)"><span>🟡</span>Pacman</button>
+      <button class="archetype-btn" data-key="2D_TANK" onclick="selectArchetype(this)"><span>🪖</span>Tank Combat</button>
+      <button class="archetype-btn" data-key="2D_JUMPER" onclick="selectArchetype(this)"><span>☁️</span>Doodle Jumper</button>
+      <button class="archetype-btn" data-key="2D_RUNNER" onclick="selectArchetype(this)"><span>🏃</span>2D Runner</button>
+      <button class="archetype-btn" data-key="2D_CHESS" onclick="selectArchetype(this)"><span>♟️</span>Chess 2D</button>`;
+    window._app.selectedArchetype = 'CUSTOM_AI';
+  }
+}
+
+window.selectArchetype = function(btn) {
+  document.querySelectorAll('.archetype-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  window._app.selectedArchetype = btn.dataset.key;
+};
+
+function preselectArchetype(archetype) {
+  const is3D = !archetype.startsWith('2D') && archetype !== '2D_CHESS';
+  if (is3D) {
+    window.setDim('3D');
+  } else {
+    window.setDim('2D');
+  }
+
+  setTimeout(() => {
+    const btn = document.querySelector(`[data-key="${archetype}"]`);
+    if (btn) window.selectArchetype(btn);
+    window._app.selectedArchetype = archetype;
+  }, 50);
+}
+
+// ============================================
+//   GAME LAUNCH & CUSTOM CODE SYNTHESIS
+// ============================================
+window.launchGame = async function() {
+  const archetype = window._app.selectedArchetype;
+  const customPrompt = document.getElementById('gen-custom-prompt').value.trim();
+
+  if (archetype === 'CUSTOM_AI' || customPrompt) {
+    const promptToUse = customPrompt || 'Farmer Life Simulator';
+    window.showLoading('Synthesizing Code...', `🧠 Ollama LLM writing game code for "${promptToUse.slice(0, 30)}..."`);
+
+    try {
+      const res = await fetch(`${API_BASE}/generate-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPrompt: promptToUse })
+      });
+      const data = await res.json();
+      window.hideLoading();
+
+      if (data.success && data.code) {
+        window._app.lastCustomCode = data.code;
+        window._app.lastCustomPrompt = promptToUse;
+        window._app.lastArchetype = 'CUSTOM_AI';
+
+        renderCustomIframe(data.code);
+        addChatMessage(`✨ AI generated custom game code for "${promptToUse}"`, 'ai');
+        const guideEl = document.getElementById('controls-guide-text');
+        if (guideEl) guideEl.textContent = `🎮 Custom LLM Game: "${promptToUse}"`;
+      }
+    } catch (e) {
+      window.hideLoading();
+      console.error('[LaunchCustomGame] Error:', e);
+    }
+  } else {
+    window.showLoading('Generating...', `⚡ Building ${archetype.replace(/_/g,' ')} prototype...`);
+    setTimeout(() => {
+      window.hideLoading();
+      spawnGame(archetype, customPrompt);
+    }, 800);
+  }
+};
+
+function sanitizeCodeForIframe(raw) {
+  if (!raw) return '';
+  let clean = raw.trim();
+  if (clean.includes('```')) {
+    const match = clean.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+    if (match && match[1]) clean = match[1].trim();
+    else clean = clean.replace(/```(?:javascript|js)?/gi, '').replace(/```/g, '').trim();
+  }
+  return clean.replace(/^(?:javascript|js)\s*\n/i, '').replace(/^(?:javascript|js)\s+/i, '').trim();
+}
+
+function renderCustomIframe(code) {
+  const iframe = document.getElementById('custom-game-iframe');
+  const webglCanvas = document.getElementById('webgl-canvas');
+  const canvas2D = document.getElementById('canvas-2d');
+  const placeholder = document.getElementById('canvas-placeholder');
+
+  if (window._app.currentGame) {
+    window._app.currentGame.destroy();
+    window._app.currentGame = null;
+  }
+
+  if (placeholder) placeholder.style.display = 'none';
+  if (webglCanvas) webglCanvas.style.display = 'none';
+  if (canvas2D) canvas2D.style.display = 'none';
+  if (iframe) iframe.style.display = 'block';
+
+  const cleanCode = sanitizeCodeForIframe(code);
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  const scriptTagStart = '<script>';
+  const scriptTagEnd = '<\/script>';
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { margin: 0; padding: 0; background: #0f172a; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
+        canvas { background: #1e293b; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); cursor: pointer; }
+      </style>
+    </head>
+    <body>
+      <canvas id="gameCanvas" width="800" height="600"></canvas>
+      ${scriptTagStart}
+        window.onerror = function(msg, url, line) {
+          window.parent.postMessage({ type: 'GAME_ERROR', error: msg + ' (line ' + line + ')' }, '*');
+        };
+        try {
+          ${cleanCode}
+        } catch(err) {
+          console.error("Custom Game Code Execution Error:", err);
+          window.parent.postMessage({ type: 'GAME_ERROR', error: err.message }, '*');
+        }
+      ${scriptTagEnd}
+    </body>
+    </html>
+  `);
+  doc.close();
+}
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'GAME_ERROR') {
+    console.warn('[IframeGameError]', e.data.error);
+    addChatMessage(`⚠️ Runtime Error: ${e.data.error}`, 'ai');
+  }
+});
+
+window.sendCustomTweak = async function() {
+  const input = document.getElementById('ai-tweak-chat-input');
+  const tweakText = input ? input.value.trim() : '';
+  if (!tweakText) return;
+
+  if (input) input.value = '';
+  addChatMessage(`🛠️ Tweak: "${tweakText}"`, 'user');
+
+  const basePrompt = window._app.lastCustomPrompt || 'Farmer Life Simulator';
+  const prevCode = window._app.lastCustomCode || '';
+
+  window.showLoading('Updating Code...', `🧠 Ollama LLM refactoring game with: "${tweakText.slice(0, 30)}..."`);
+
+  try {
+    const res = await fetch(`${API_BASE}/generate-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userPrompt: basePrompt,
+        previousCode: prevCode,
+        tweakRequest: tweakText
+      })
+    });
+    const data = await res.json();
+    window.hideLoading();
+
+    if (data.success && data.code) {
+      window._app.lastCustomCode = data.code;
+      renderCustomIframe(data.code);
+      addChatMessage(`✅ Applied tweak: "${tweakText}"`, 'ai');
+    }
+  } catch (err) {
+    window.hideLoading();
+    addChatMessage(`⚠️ Failed to apply tweak. Re-trying...`, 'ai');
+  }
+};
+
+function addChatMessage(msg, sender='ai') {
+  const area = document.getElementById('ai-chat-messages');
+  if (!area) return;
+  const div = document.createElement('div');
+  div.style.padding = '4px 8px';
+  div.style.borderRadius = '6px';
+  div.style.background = sender === 'user' ? 'rgba(192,132,252,0.15)' : 'rgba(255,255,255,0.06)';
+  div.style.color = sender === 'user' ? '#e9d5ff' : '#cbd5e1';
+  div.style.fontWeight = '600';
+  div.textContent = msg;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function spawnGame(archetype, customPrompt = '') {
+  const iframe = document.getElementById('custom-game-iframe');
+  if (iframe) iframe.style.display = 'none';
+
+  if (window._app.currentGame) {
+    window._app.currentGame.destroy();
+    window._app.currentGame = null;
+  }
+
+  const is2D = archetype.startsWith('2D') || archetype === '2D_CHESS';
+  const webglCanvas = document.getElementById('webgl-canvas');
+  const canvas2D = document.getElementById('canvas-2d');
+  const placeholder = document.getElementById('canvas-placeholder');
+  if (placeholder) placeholder.style.display = 'none';
+
+  if (is2D) {
+    if (webglCanvas) webglCanvas.style.display = 'none';
+    if (canvas2D) canvas2D.style.display = 'block';
+  } else {
+    if (canvas2D) canvas2D.style.display = 'none';
+    if (webglCanvas) webglCanvas.style.display = 'block';
+  }
+
+  const callbacks = {
+    onScoreUpdate: (s, h) => {
+      const scoreEl = document.getElementById('canvas-score');
+      const highEl = document.getElementById('canvas-highscore');
+      if (scoreEl) scoreEl.textContent = s;
+      if (highEl) highEl.textContent = h;
+    },
+    onGuideUpdate: (g) => {
+      const guideEl = document.getElementById('controls-guide-text');
+      if (guideEl) guideEl.textContent = g;
+    },
+    onHealthUpdate: (hp) => {
+      const bar = document.getElementById('hud-health-bar');
+      if (bar) {
+        bar.style.width = `${hp}%`;
+        bar.className = hp < 30 ? 'hp-red' : (hp < 60 ? 'hp-yellow' : 'hp-green');
+      }
+    },
+    onGameOver: (d) => showGameOver(d)
+  };
+
+  const hpEl = document.getElementById('hud-health-container');
+  const needsHP = ['2D_SHOOTER','2D_TANK','SHOOTER'].includes(archetype);
+  if (hpEl) hpEl.classList.toggle('visible', needsHP);
+
+  const prompt = customPrompt || archetype.toLowerCase().replace(/_/g, ' ');
+  if (is2D) {
+    const modeKey = archetype === '2D_CHESS' ? '2D_CHESS' : archetype;
+    window._app.currentGame = new Game2DEngine(canvas2D, semanticClassifier, callbacks, modeKey);
+  } else {
+    if (!window._app.threeEngine) {
+      window._app.threeEngine = new ThreeEngine(webglCanvas);
+    }
+    const engine = window._app.threeEngine;
+    const gameMap = {
+      'RUNNER': () => new GameRunner(engine, semanticClassifier, callbacks),
+      'SHOOTER': () => new GameShooter(engine, semanticClassifier, callbacks),
+      'CHESS': () => new GameChess3D(engine, semanticClassifier, callbacks),
+      'MAZE': () => new GameMaze(engine, semanticClassifier, callbacks),
+      'PLATFORMER': () => new GamePlatformer(engine, semanticClassifier, callbacks),
+      'RACING': () => new GameRacing(engine, semanticClassifier, callbacks),
+    };
+    const factory = gameMap[archetype] || gameMap['RUNNER'];
+    window._app.currentGame = factory();
+  }
+
+  window._app.lastArchetype = archetype;
+  window._app.lastCustomPrompt = customPrompt;
+}
+
+window.applyTweak = function(mod) {
+  if (window._app.currentGame) {
+    const result = semanticClassifier.interpretLiveTweak(mod);
+    if (result.success && window._app.threeEngine && !window._app.activeStudioTab?.startsWith('2D')) {
+      window._app.threeEngine.applyTheme(result.state.theme);
+    }
+  }
+  const promptInput = document.getElementById('gen-custom-prompt');
+  if (promptInput) promptInput.value = mod;
+};
+
+window.restartCurrentGame = function() {
+  if (window._app.lastArchetype === 'CUSTOM_AI' && window._app.lastCustomCode) {
+    renderCustomIframe(window._app.lastCustomCode);
+  } else if (window._app.lastArchetype) {
+    spawnGame(window._app.lastArchetype, window._app.lastCustomPrompt || '');
+  }
+};
+
+window.toggleFullscreen = function() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+  else document.exitFullscreen().catch(() => {});
+};
+
+// ============================================
+//   GAME LOOP
+// ============================================
+let lastTime = performance.now();
+function gameLoop(now) {
+  requestAnimationFrame(gameLoop);
+  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  lastTime = now;
+  const game = window._app.currentGame;
+  if (game && game.active) game.update(dt);
+  if (game && game.engine && window._app.threeEngine) window._app.threeEngine.render();
+}
+requestAnimationFrame(gameLoop);
+
+// ============================================
+//   LOADING OVERLAY
+// ============================================
+let _loadInterval = null;
+window.showLoading = function(title, sub) {
+  const overlay = document.getElementById('loading-overlay');
+  const textEl = document.getElementById('loading-text');
+  const subEl = document.getElementById('loading-sub');
+  const bar = document.getElementById('loading-progress');
+
+  if (textEl) textEl.textContent = title;
+  if (subEl) subEl.textContent = sub;
+  if (bar) bar.style.width = '0%';
+  if (overlay) overlay.classList.add('show');
+
+  let p = 0;
+  if (_loadInterval) clearInterval(_loadInterval);
+  _loadInterval = setInterval(() => {
+    p = Math.min(p + 4, 92);
+    if (bar) bar.style.width = p + '%';
+  }, 80);
+};
+
+window.hideLoading = function() {
+  if (_loadInterval) clearInterval(_loadInterval);
+  const bar = document.getElementById('loading-progress');
+  const overlay = document.getElementById('loading-overlay');
+  if (bar) bar.style.width = '100%';
+  setTimeout(() => {
+    if (overlay) overlay.classList.remove('show');
+    if (bar) bar.style.width = '0%';
+  }, 200);
+};
+
+// ============================================
+//   GAME OVER MODAL
+// ============================================
+function showGameOver(details) {
+  const titleEl = document.getElementById('modal-title');
+  const subEl = document.getElementById('modal-sub');
+  const scoreEl = document.getElementById('modal-final-score');
+  const highEl = document.getElementById('modal-high-score');
+  const modal = document.getElementById('game-over-modal');
+
+  if (titleEl) titleEl.textContent = details.title;
+  if (subEl) subEl.textContent = details.subtitle;
+  if (scoreEl) scoreEl.textContent = details.score;
+  if (highEl) highEl.textContent = details.highScore;
+  if (modal) modal.classList.add('show');
+}
+
+window.hideGameOver = function() {
+  const modal = document.getElementById('game-over-modal');
+  if (modal) modal.classList.remove('show');
+};
+
+// ============================================
+//   SESSION HISTORY
+// ============================================
+window.toggleHistoryDrawer = function() {
+  const drawer = document.getElementById('history-drawer');
+  const backdrop = document.getElementById('history-backdrop');
+  if (!drawer) return;
+  const isOpen = drawer.style.right === '0px';
+  drawer.style.right = isOpen ? '-360px' : '0px';
+  if (backdrop) backdrop.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) loadHistoryDrawer();
+};
+
+async function loadHistoryDrawer() {
+  const listEl = document.getElementById('history-list');
+  if (listEl) listEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.3);padding:16px;text-align:center">Loading...</div>';
+  try {
+    const res = await fetch(`${API_BASE}/history`);
+    const { history } = await res.json();
+    renderHistoryList(history);
+  } catch {
+    renderHistoryList(getLocalHistory());
+  }
+}
+
+function renderHistoryList(history) {
+  const listEl = document.getElementById('history-list');
+  if (!listEl) return;
+  if (!history || !history.length) {
+    listEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.3);padding:24px;text-align:center"><div style="font-size:32px;margin-bottom:8px">🕹️</div>No history yet. Search for a game!</div>';
+    return;
+  }
+  listEl.innerHTML = history.map(h => {
+    const safePrompt = (h.prompt || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return `
+      <div onclick="window.replayHistory('${safePrompt}')"
+        style="padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.03);margin-bottom:8px;cursor:pointer;transition:all 0.2s"
+        onmouseover="this.style.background='rgba(255,255,255,0.07)'"
+        onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+        <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${h.prompt}"</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;color:rgba(255,255,255,0.3)">${new Date(h.timestamp).toLocaleTimeString()}</span>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${h.isGeneratable ? 'background:rgba(52,211,153,0.12);color:#34d399' : 'background:rgba(251,191,36,0.12);color:#fbbf24'}">${h.isGeneratable ? '⚡ Gen' : '📚 Rec'}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.replayHistory = function(prompt) {
+  window.toggleHistoryDrawer();
+  window.navigateTo('search');
+  setTimeout(() => {
+    const input = document.getElementById('search-main-input');
+    if (input) input.value = prompt;
+    window.doSearch();
+  }, 150);
+};
+
+window.clearHistory = async function() {
+  try { await fetch(`${API_BASE}/history`, { method: 'DELETE' }); } catch {}
+  clearLocalHistory();
+  renderHistoryList([]);
+};
+
+function getLocalHistory() {
+  try { return JSON.parse(localStorage.getItem('ia_history') || '[]'); } catch { return []; }
+}
+
+function saveToHistory(prompt) {
+  try {
+    const h = getLocalHistory();
+    h.unshift({ prompt, timestamp: new Date().toISOString(), isGeneratable: true });
+    localStorage.setItem('ia_history', JSON.stringify(h.slice(0, 20)));
+  } catch {}
+}
+
+function clearLocalHistory() {
+  try { localStorage.removeItem('ia_history'); } catch {}
+}
+
+// Check backend status and attach listeners on module load
+document.addEventListener('DOMContentLoaded', () => {
+  checkBackend();
+  const searchInput = document.getElementById('search-main-input');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') window.doSearch();
+    });
+  }
 });

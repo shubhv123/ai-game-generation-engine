@@ -4,15 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5173",
+    "dev:backend": "node backend/server.js",
+    "dev:all": "concurrently --kill-others-on-fail \"npm run dev\" \"npm run dev:backend\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "concurrently": "^10.0.4",
     "vite": "^8.2.0"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "lucide": "^1.29.0",
     "three": "^0.185.1"
   }
