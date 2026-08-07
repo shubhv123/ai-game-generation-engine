@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infinite Arcade - Light Mode AI Game Discovery & Studio</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            emeraldBrand: {
+              700: '#1b4d3e',
+              600: '#2d6a4f',
+              500: '#40916c',
+              400: '#52b788',
+              300: '#74c69d',
+              200: '#95d5b2',
+              100: '#d8f3dc',
+              50:  '#f0fdf4'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans min-h-screen flex items-center justify-center p-2 sm:p-4 select-none">
+
+  <!-- LIGHT MODE BROWSER FRAME SHELL -->
+  <div class="w-full max-w-[1440px] h-[96vh] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden relative">
+    
+    <!-- 1. BROWSER WINDOW HEADER BAR -->
+    <div class="px-5 py-3 bg-[#f1f5f9] border-b border-slate-200 flex items-center justify-between">
+      <!-- Window Controls Dots -->
+      <div class="flex items-center gap-2">
+        <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
+        <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+        <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+      </div>
+
+      <!-- Central Search Input Bar -->
+      <div class="flex-1 max-w-xl mx-4">
+        <div class="relative flex items-center">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input id="header-search-bar" type="text" 
+            placeholder="Search 100+ Games or type custom prompt: e.g. &quot;a 2D puzzle game with increasing difficulty&quot;..." 
+            class="w-full bg-white border border-slate-300 rounded-full py-1.5 pl-10 pr-4 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]/20 font-medium shadow-sm transition">
+        </div>
+      </div>
+
+      <!-- Quick Action Icons -->
+      <div class="flex items-center gap-3 text-slate-600">
+        <button id="btn-quick-add" title="Create New Game" class="p-1.5 rounded-full hover:bg-slate-200 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        </button>
+        <button id="btn-quick-bookmark" title="Saved Games" class="p-1.5 rounded-full hover:bg-slate-200 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+        </button>
+        <button id="btn-audio-toggle" title="Toggle Audio" class="p-1.5 rounded-full hover:bg-slate-200 transition text-[#1b4d3e]">
+          <svg id="icon-sound-on" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+          <svg id="icon-sound-off" class="w-4 h-4 hidden text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. MAIN TOP NAVIGATION NAVBAR -->
+    <header class="px-8 py-4 flex items-center justify-between border-b border-slate-200 bg-white">
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-[#1b4d3e] text-white flex items-center justify-center font-black text-lg shadow-md shadow-[#1b4d3e]/20">
+          ⚡
+        </div>
+        <span class="text-xl font-extrabold text-[#1b4d3e] tracking-tight">Infinite Arcade</span>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="hidden md:flex items-center gap-8 font-semibold text-sm">
+        <button id="nav-home" class="px-4 py-1.5 rounded-full bg-[#1b4d3e] text-white shadow-sm transition">Home</button>
+        <button id="nav-discovery" class="text-slate-600 hover:text-[#1b4d3e] transition">AI Discovery</button>
+        <button id="nav-3d" class="text-slate-600 hover:text-[#1b4d3e] transition">3D Studio</button>
+        <button id="nav-2d" class="text-slate-600 hover:text-[#1b4d3e] transition">2D Arcade</button>
+      </nav>
+
+      <!-- Right Action Pill Buttons -->
+      <div class="flex items-center gap-3">
+        <button id="btn-open-library" class="px-4 py-2 rounded-full bg-[#1b4d3e] hover:bg-[#2d6a4f] text-white font-bold text-xs shadow-md shadow-[#1b4d3e]/20 transition active:scale-95 flex items-center gap-1.5">
+          <span>📚 100+ Games</span>
+        </button>
+        <button id="btn-header-generate" class="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">
+          Instant Generate
+        </button>
+      </div>
+    </header>
+
+    <!-- 3. MAIN DASHBOARD CONTENT AREA -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden bg-white">
+      
+      <!-- LEFT SECTION: Hero Headline & Prompt Search Deck -->
+      <section class="w-full lg:w-[48%] p-6 lg:p-10 flex flex-col justify-between overflow-y-auto custom-scrollbar border-r border-slate-200">
+        
+        <div class="space-y-6">
+          <!-- Hero Title & Subtitle -->
+          <div class="space-y-2">
+            <h1 class="text-3xl lg:text-4xl xl:text-5xl font-extrabold text-[#1b4d3e] tracking-tight leading-tight">
+              Make Your Gaming<br>
+              <span class="text-[#2d6a4f] font-semibold">Minimalist and Powerful</span>
+            </h1>
+            <p class="text-xs lg:text-sm text-slate-600 font-medium max-w-md leading-relaxed">
+              Describe the game you want to play in natural language. Our AI platform searches global databases and instantly generates a simple playable game.
+            </p>
+          </div>
+
+          <!-- Natural Language Prompt Box Card -->
+          <div class="space-y-2 bg-[#f8fafc] border border-slate-200 p-4 rounded-3xl shadow-sm">
+            <label for="prompt-input" class="block text-xs font-extrabold text-[#1b4d3e] uppercase tracking-wider">
+              Natural Language Game Generator Prompt:
+            </label>
+            <div class="relative">
+              <textarea id="prompt-input" rows="3" 
+                placeholder="e.g. &quot;a 2D puzzle game with increasing difficulty&quot;, &quot;a multiplayer shooting game with futuristic weapons&quot;, &quot;chess 3d&quot;..."
+                class="w-full bg-white border border-slate-300 rounded-2xl p-3.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]/20 font-medium shadow-inner resize-none"></textarea>
+              
+              <button id="btn-generate" class="mt-2 w-full py-3 px-6 rounded-full bg-gradient-to-r from-[#1b4d3e] to-[#2d6a4f] hover:from-[#2d6a4f] hover:to-[#40916c] text-white font-extrabold text-xs shadow-lg shadow-[#1b4d3e]/25 transition active:scale-95 flex items-center justify-center gap-2 group">
+                <span id="btn-generate-text">⚡ DISCOVER & INSTANT GENERATE GAME</span>
+                <span class="group-hover:translate-x-1 transition-transform">➔</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- AI Game Discovery Recommendations Deck -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold text-[#1b4d3e] uppercase tracking-wider flex items-center gap-1.5">
+                <span>🎯 AI Search & Discovery Recommendations</span>
+              </span>
+              <span id="recommendations-badge" class="text-[10px] text-[#1b4d3e] bg-[#d8f3dc] px-2.5 py-0.5 rounded-full font-bold">Live AI Match</span>
+            </div>
+
+            <div id="discovery-deck" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <!-- Discovery cards rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Director Live Tweaks Bar -->
+          <div class="space-y-2 pt-2 border-t border-slate-200">
+            <span class="text-xs font-extrabold text-[#1b4d3e] uppercase tracking-wider block">
+              Director Live Tweaks Bar:
+            </span>
+            <form id="modifier-form" class="flex gap-2">
+              <input id="modifier-input" type="text" 
+                placeholder="e.g. &quot;make super fast&quot;, &quot;low gravity&quot;, &quot;neon theme&quot;" 
+                class="flex-1 bg-white border border-slate-300 rounded-full px-3.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#2d6a4f]/20">
+              <button type="submit" class="px-4 py-1.5 rounded-full bg-[#1b4d3e] text-white text-xs font-bold shadow-sm transition">Tweak</button>
+            </form>
+            <div class="flex flex-wrap gap-1.5">
+              <button data-mod="make it super fast" class="btn-mod text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 hover:bg-[#d8f3dc] text-slate-700 hover:text-[#1b4d3e] transition border border-slate-200">⚡ Super Fast</button>
+              <button data-mod="low gravity" class="btn-mod text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 hover:bg-[#d8f3dc] text-slate-700 hover:text-[#1b4d3e] transition border border-slate-200">🌌 Low Gravity</button>
+              <button data-mod="neon cyberpunk theme" class="btn-mod text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 hover:bg-[#d8f3dc] text-slate-700 hover:text-[#1b4d3e] transition border border-slate-200">🟣 Neon Theme</button>
+              <button data-mod="infinite health" class="btn-mod text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 hover:bg-[#d8f3dc] text-slate-700 hover:text-[#1b4d3e] transition border border-slate-200">🛡️ Infinite HP</button>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- RIGHT SECTION: Interactive Oval Showcase Viewport Cards -->
+      <section class="flex-1 p-6 lg:p-10 bg-[#f8fafc] flex flex-col justify-between overflow-y-auto relative">
+        
+        <!-- Top Studio Controls Header -->
+        <div class="flex items-center justify-between mb-4 z-10">
+          <!-- 3D vs 2D Studio Switcher -->
+          <div class="inline-flex p-1 bg-slate-200 rounded-full text-xs font-bold shadow-inner">
+            <button id="tab-3d" class="tab-btn px-4 py-1.5 rounded-full bg-[#1b4d3e] text-white shadow-sm transition">
+              ✨ 3D WebGL Engine
+            </button>
+            <button id="tab-2d" class="tab-btn px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 transition">
+              👾 2D Canvas Engine
+            </button>
+          </div>
+
+          <!-- Score Telemetry Pill -->
+          <div class="flex items-center gap-3 bg-white border border-slate-200 px-4 py-1.5 rounded-full shadow-sm">
+            <span class="text-xs font-extrabold text-slate-500">Score: <strong id="canvas-score" class="text-[#1b4d3e] font-mono text-sm">0</strong></span>
+            <span class="w-px h-4 bg-slate-200"></span>
+            <span class="text-xs font-extrabold text-slate-500">High: <strong id="canvas-highscore" class="text-amber-500 font-mono text-sm">0</strong></span>
+            <div id="hud-health-container" class="hidden items-center gap-1.5 pl-2">
+              <span class="w-px h-4 bg-slate-200"></span>
+              <span class="text-xs font-bold text-rose-500">HP</span>
+              <div class="w-16 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                <div id="hud-health-bar" class="h-full bg-emerald-500 w-full"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OVAL SHOWCASE VIEWPORT CONTAINERS -->
+        <div class="flex-1 flex items-center justify-center gap-6 my-2 relative">
+          
+          <!-- Oval Card 01: 3D WebGL Game Canvas Container -->
+          <div id="container-3d-card" class="oval-showcase-card w-full max-w-[480px] h-[440px] lg:h-[480px] relative p-3 flex flex-col justify-between">
+            <div class="px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-extrabold flex items-center justify-between z-10">
+              <span id="hud-game-type">01. 3D WebGL Active Engine</span>
+              <span id="dimension-badge" class="bg-white text-[#1b4d3e] px-2 py-0.5 rounded-full text-[10px]">3D</span>
+            </div>
+            
+            <canvas id="webgl-canvas" class="w-full h-full rounded-[100px] block cursor-pointer"></canvas>
+
+            <div class="px-4 py-2 bg-black/40 backdrop-blur-md rounded-full text-white text-[11px] font-medium text-center z-10">
+              Click canvas to play with Keyboard & Mouse
+            </div>
+          </div>
+
+          <!-- Oval Card 02: 2D Canvas Game Container -->
+          <div id="container-2d-card" class="oval-showcase-card-secondary hidden w-full max-w-[480px] h-[440px] lg:h-[480px] relative p-3 flex flex-col justify-between">
+            <div class="px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-extrabold flex items-center justify-between z-10">
+              <span>02. 2D Canvas Active Arcade</span>
+              <span class="bg-white text-[#2d6a4f] px-2 py-0.5 rounded-full text-[10px]">2D</span>
+            </div>
+
+            <canvas id="canvas-2d" class="w-full h-full rounded-[100px] block cursor-pointer"></canvas>
+
+            <div class="px-4 py-2 bg-black/40 backdrop-blur-md rounded-full text-white text-[11px] font-medium text-center z-10">
+              Click canvas to play with Keyboard & Mouse
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Bottom Controls Guide Pill -->
+        <div class="mt-4 px-5 py-2.5 bg-white border border-slate-200 rounded-full shadow-sm flex items-center justify-between text-xs text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span id="controls-guide-text" class="font-medium text-slate-700">Active Controls: Arrow Keys / WASD to Move • Spacebar to Action</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btn-restart" class="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition">
+              Restart Game
+            </button>
+            <button id="btn-fullscreen" class="px-3 py-1 rounded-full bg-[#1b4d3e] text-white font-bold text-[11px] transition">
+              Fullscreen
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- 4. BOTTOM EMERALD FEATURE FOOTER BAR -->
+    <footer class="px-8 py-3.5 bg-[#1b4d3e] text-white flex items-center justify-between text-xs font-medium border-t border-[#2d6a4f]">
+      <!-- Stats Badges -->
+      <div class="flex items-center gap-8">
+        <div class="flex items-center gap-2">
+          <span class="p-1.5 rounded-full bg-white/10">⏱️</span>
+          <div>
+            <span class="font-extrabold block text-sm leading-tight">30ms Compilation</span>
+            <span class="text-[10px] text-emerald-200">Instant AI Game Generation</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span class="p-1.5 rounded-full bg-white/10">👥</span>
+          <div>
+            <span class="font-extrabold block text-sm leading-tight">100k+ Active Gamers</span>
+            <span class="text-[10px] text-emerald-200">Worldwide Discovery Platform</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 hidden sm:flex">
+          <span class="p-1.5 rounded-full bg-white/10">🚀</span>
+          <div>
+            <span class="font-extrabold block text-sm leading-tight">Global AI Search</span>
+            <span class="text-[10px] text-emerald-200">Database & Online Recommendation</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating User Tools Widget Pill -->
+      <div class="flex items-center gap-3 bg-white text-slate-700 px-4 py-1.5 rounded-full shadow-md text-xs font-bold">
+        <button title="Language" class="hover:text-[#1b4d3e]">🌐</button>
+        <span class="w-px h-3 bg-slate-300"></span>
+        <button title="Profile" class="hover:text-[#1b4d3e]">👤</button>
+        <span class="w-px h-3 bg-slate-300"></span>
+        <button title="Share Platform" class="hover:text-[#1b4d3e]">🔗</button>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- 100+ GAMES LIBRARY MODAL OVERLAY -->
+  <div id="library-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="max-w-3xl w-full h-[80vh] bg-white rounded-3xl p-6 flex flex-col justify-between shadow-2xl border border-slate-200">
+      
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div>
+          <h2 class="text-xl font-extrabold text-[#1b4d3e]">📚 100+ GAMES LIBRARY EXPLORER</h2>
+          <p class="text-xs text-slate-500">Select any Arcade Classic or Top 3D Hit to instant-compile and play!</p>
+        </div>
+        <button id="btn-close-library" class="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition">✕</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-2 my-3 space-y-4 custom-scrollbar">
+        <div>
+          <h3 class="text-xs font-extrabold text-[#1b4d3e] uppercase tracking-wider mb-2">👾 2D ARCADE CLASSICS</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <button data-library-preset="a 2D puzzle game with increasing difficulty" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🧩</span>
+              <span class="text-xs font-extrabold text-slate-800 block">2D Logic Puzzle</span>
+              <span class="text-[10px] text-slate-500">Increasing Difficulty</span>
+            </button>
+            <button data-library-preset="2d chess" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">♟️</span>
+              <span class="text-xs font-extrabold text-slate-800 block">2D Official Chess</span>
+              <span class="text-[10px] text-slate-500">Rules Engine & AI</span>
+            </button>
+            <button data-library-preset="2d snake game" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🐍</span>
+              <span class="text-xs font-extrabold text-slate-800 block">2D Neon Snake</span>
+              <span class="text-[10px] text-slate-500">Classic Tron Matrix</span>
+            </button>
+            <button data-library-preset="2d pacman" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🟡</span>
+              <span class="text-xs font-extrabold text-slate-800 block">2D Pacman Dots</span>
+              <span class="text-[10px] text-slate-500">Maze Ghost Chaser</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-xs font-extrabold text-[#1b4d3e] uppercase tracking-wider mb-2">✨ TOP 100 3D HITS</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <button data-library-preset="a multiplayer shooting game with futuristic weapons" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🔫</span>
+              <span class="text-xs font-extrabold text-slate-800 block">Futuristic 3D Shooter</span>
+              <span class="text-[10px] text-slate-500">Laser Weapons & Arena</span>
+            </button>
+            <button data-library-preset="chess 3d" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">♟️</span>
+              <span class="text-xs font-extrabold text-slate-800 block">3D Chess Master</span>
+              <span class="text-[10px] text-slate-500">Full 3D Board & AI</span>
+            </button>
+            <button data-library-preset="subway surfers" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🏃</span>
+              <span class="text-xs font-extrabold text-slate-800 block">Subway Surfers 3D</span>
+              <span class="text-[10px] text-slate-500">3-Lane Highway Dash</span>
+            </button>
+            <button data-library-preset="mario kart 3d" class="btn-lib-card text-left p-3 rounded-2xl bg-slate-50 hover:bg-[#d8f3dc] border border-slate-200 hover:border-[#2d6a4f] transition group">
+              <span class="text-xl block mb-1">🏎️</span>
+              <span class="text-xs font-extrabold text-slate-800 block">Mario Kart 3D</span>
+              <span class="text-[10px] text-slate-500">Turbo Car Racer</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- LOADING OVERLAY -->
+  <div id="generating-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <div class="w-12 h-12 mx-auto rounded-full border-4 border-slate-200 border-t-[#1b4d3e] animate-spin"></div>
+      <h3 class="text-base font-extrabold text-[#1b4d3e]">AI SEARCH & GENERATING...</h3>
+      <p id="gen-prompt-text" class="text-xs text-slate-500 font-mono truncate">Prompting...</p>
+      <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+        <div id="gen-progress-bar" class="bg-[#1b4d3e] h-full w-0 transition-all duration-75"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER / VICTORY MODAL OVERLAY -->
+  <div id="overlay-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <div id="modal-icon" class="w-12 h-12 mx-auto rounded-full bg-[#d8f3dc] text-[#1b4d3e] flex items-center justify-center text-2xl">🏆</div>
+      <h2 id="modal-title" class="text-2xl font-extrabold text-[#1b4d3e]">GAME OVER!</h2>
+      <p id="modal-subtitle" class="text-xs text-slate-500">Try again or tweak live settings!</p>
+      <div class="bg-slate-50 p-3 rounded-2xl flex justify-around text-xs font-bold">
+        <div>Score: <span id="modal-final-score" class="text-[#1b4d3e] font-mono text-sm">0</span></div>
+        <div>High: <span id="modal-high-score" class="text-amber-500 font-mono text-sm">0</span></div>
+      </div>
+      <button id="btn-modal-restart" class="w-full py-3 rounded-full bg-[#1b4d3e] hover:bg-[#2d6a4f] text-white font-extrabold text-xs shadow-md transition">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
