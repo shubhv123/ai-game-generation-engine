@@ -1,13 +1,30 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+// On Vercel / serverless, write to /tmp directory instead of read-only /var/task/
+const DATA_DIR = process.env.VERCEL 
+  ? path.join(os.tmpdir(), 'data')
+  : path.resolve(process.cwd(), 'data');
+
 const HISTORY_FILE = path.join(DATA_DIR, 'session_history.json');
 const PREFERENCES_FILE = path.join(DATA_DIR, 'user_preferences.json');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// In-memory fallback if disk operations fail on serverless
+let memoryHistory = [];
+let memoryPreferences = {
+  favoriteGenres: ['Shooter', 'Puzzle', 'Strategy'],
+  preferredPlatforms: ['PC', 'Web'],
+  likedGames: []
+};
+
+// Safely ensure data directory exists without crashing on read-only environments
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('[HistoryStore] Filesystem write protected, using in-memory store:', e.message);
 }
 
 export class HistoryStore {
@@ -18,9 +35,9 @@ export class HistoryStore {
         return JSON.parse(raw);
       }
     } catch (e) {
-      console.warn('[HistoryStore] Failed to read session history:', e.message);
+      console.warn('[HistoryStore] Reading memory history fallback');
     }
-    return [];
+    return memoryHistory;
   }
 
   static addHistoryEntry(entry) {
@@ -37,21 +54,27 @@ export class HistoryStore {
 
     history.unshift(newEntry);
     const trimmed = history.slice(0, 30); // Keep last 30 searches
+    memoryHistory = trimmed;
 
     try {
-      fs.writeFileSync(HISTORY_FILE, JSON.stringify(trimmed, null, 2));
+      if (fs.existsSync(DATA_DIR)) {
+        fs.writeFileSync(HISTORY_FILE, JSON.stringify(trimmed, null, 2));
+      }
     } catch (e) {
-      console.error('[HistoryStore] Error saving session history:', e.message);
+      console.warn('[HistoryStore] Updated in-memory history entry');
     }
 
     return newEntry;
   }
 
   static clearHistory() {
+    memoryHistory = [];
     try {
-      fs.writeFileSync(HISTORY_FILE, JSON.stringify([]));
+      if (fs.existsSync(HISTORY_FILE)) {
+        fs.writeFileSync(HISTORY_FILE, JSON.stringify([]));
+      }
     } catch (e) {
-      console.error('[HistoryStore] Error clearing history:', e.message);
+      console.warn('[HistoryStore] Cleared in-memory history');
     }
     return [];
   }
@@ -63,20 +86,19 @@ export class HistoryStore {
         return JSON.parse(raw);
       }
     } catch (e) {
-      console.warn('[HistoryStore] Failed to read user preferences:', e.message);
+      console.warn('[HistoryStore] Reading memory preferences fallback');
     }
-    return {
-      favoriteGenres: ['Shooter', 'Puzzle', 'Strategy'],
-      preferredPlatforms: ['PC', 'Web'],
-      likedGames: []
-    };
+    return memoryPreferences;
   }
 
   static savePreferences(prefs) {
+    memoryPreferences = prefs;
     try {
-      fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+      if (fs.existsSync(DATA_DIR)) {
+        fs.writeFileSync(PREFERENCES_FILE, JSON.stringify(prefs, null, 2));
+      }
     } catch (e) {
-      console.error('[HistoryStore] Error saving preferences:', e.message);
+      console.warn('[HistoryStore] Saved in-memory preferences');
     }
     return prefs;
   }

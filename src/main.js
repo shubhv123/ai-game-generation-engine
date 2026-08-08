@@ -60,9 +60,16 @@ window.homeCardClick = function(prompt) {
 // ============================================
 async function checkBackend() {
   try {
-    const res = await fetch(`${API_BASE.replace('/api','')}/health`);
+    const res = await fetch(`${API_BASE}/health`);
     window._app.isBackendOnline = res.ok;
-  } catch { window._app.isBackendOnline = false; }
+  } catch {
+    try {
+      const res2 = await fetch('/health');
+      window._app.isBackendOnline = res2.ok;
+    } catch {
+      window._app.isBackendOnline = false;
+    }
+  }
   updateBackendBadge();
 }
 

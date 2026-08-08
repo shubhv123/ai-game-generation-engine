@@ -1,30 +1,37 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "backend/server.js",
-      "use": "@vercel/node"
+  "services": {
+    "frontend": {
+      "root": ".",
+      "framework": "vite",
+      "outputDirectory": "dist"
     },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+    "backend": {
+      "root": "backend",
+      "framework": "node",
+      "entrypoint": "server.js"
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "backend/server.js"
+      "source": "/api/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "backend"
+      }
     },
     {
-      "src": "/health",
-      "dest": "backend/server.js"
+      "source": "/health",
+      "destination": {
+        "type": "service",
+        "service": "backend"
+      }
     },
     {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "frontend"
+      }
     }
   ]
 }
