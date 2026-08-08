@@ -1,0 +1,178 @@
+import { callOllamaLLM } from './ollamaClient.js';
+
+// Archetypes that can be dynamically rendered as playable web prototypes
+export const GENERATABLE_ARCHETYPES = [
+  '2D_SHOOTER',      // Space shooter, Galaga/Invaders, plasma blaster
+  '2D_BRICK',        // Brick breaker, Arkanoid, physics puzzle
+  '2D_RUNNER',       // Side scrolling runner, jetpack
+  '2D_SNAKE',        // Neon grid snake, Tron lightcycle
+  '2D_TANK',         // Tank combat, artillery war
+  '2D_JUMPER',       // Doodle jumper, vertical bounce
+  '2D_PACMAN',       // Pacman maze dot chaser
+  'CHESS',           // 2D/3D Official Chess Strategy Engine
+  '3D_RUNNER',       // 3D Slope / Highway infinite runner
+  '3D_SHOOTER',      // 3D Top-down zombie shooter
+  '3D_MAZE'          // 3D Maze runner exploration
+];
+
+/**
+ * Extract structured attributes from free-text user prompt
+ */
+export async function parsePromptAttributes(userPrompt) {
+  const promptText = (userPrompt || '').trim();
+
+  if (!promptText) {
+    return getFallbackAttributes('Default Arcade Exploration');
+  }
+
+  const systemMessage = `You are an expert game developer and game taxonomy parser.
+Parse the user's natural language game request into a valid JSON object with the following fields:
+{
+  "genre": "Shooter | Puzzle | Runner | Platformer | Racing | Strategy | RPG | Fighting | Arcade",
+  "dimension": "2D | 3D",
+  "platform": "PC | Console | Mobile | Web | Cross-Platform",
+  "multiplayer": true or false,
+  "mechanics": ["list", "of", "core", "mechanics"],
+  "difficulty": "Easy | Medium | Hard | Increasing",
+  "artStyle": "Pixel | Cyberpunk | Minimalist | Low-Poly | Retro Neon | Fantasy | Realistic",
+  "moodTheme": "Action | Relaxing | Sci-Fi | Dark | Futuristic | Casual",
+  "archetype": "2D_SHOOTER | 2D_BRICK | 2D_RUNNER | 2D_SNAKE | 2D_TANK | 2D_JUMPER | 2D_PACMAN | CHESS | 3D_RUNNER | 3D_SHOOTER | 3D_MAZE | REC_ONLY",
+  "isGeneratable": true or false,
+  "scopeExplanation": "Short explanation of whether this is generatable as a playable web prototype or recommendation-only"
+}
+
+Rules:
+- Respond ONLY with pure JSON. Do not include markdown code block syntax if possible, or format strictly as JSON.
+- If request matches 2D/3D arcade/puzzle/runner/shooter/chess, set archetype appropriately and isGeneratable = true.
+- If request is a complex AAA game, open-world RPG, or massive multiplayer (e.g. GTA, Witcher 3, Cyberpunk 2077), set archetype = "REC_ONLY" and isGeneratable = false.`;
+
+  const messages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: `User Prompt: "${promptText}"` }
+  ];
+
+  const llmResult = await callOllamaLLM(messages, { temperature: 0.2 });
+
+  if (llmResult.success && llmResult.content) {
+    try {
+      // Clean potential JSON markdown blocks ```json ... ```
+      let cleaned = llmResult.content.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      }
+      const parsed = JSON.parse(cleaned);
+
+      // Sanitize fields
+      parsed.isGeneratable = Boolean(parsed.isGeneratable && parsed.archetype !== 'REC_ONLY');
+      parsed.promptText = promptText;
+      return parsed;
+    } catch (parseError) {
+      console.warn('[AttributeParser] Failed to parse JSON from LLM response, invoking rule engine fallback:', parseError.message);
+    }
+  }
+
+  // Fallback rule-based parsing if LLM is unavailable or returned non-JSON
+  return getFallbackAttributes(promptText);
+}
+
+/**
+ * Deterministic rule-based fallback parser
+ */
+export function getFallbackAttributes(text) {
+  const t = text.toLowerCase();
+  
+  let genre = 'Arcade';
+  let dimension = t.includes('2d') ? '2D' : (t.includes('3d') ? '3D' : '2D');
+  let platform = t.includes('mobile') ? 'Mobile' : (t.includes('console') ? 'Console' : 'PC / Web');
+  let multiplayer = t.includes('multiplayer') || t.includes('coop') || t.includes('pvp') || t.includes('multi-player');
+  let difficulty = t.includes('hard') ? 'Hard' : (t.includes('easy') ? 'Easy' : (t.includes('increasing') || t.includes('escalat') ? 'Increasing' : 'Medium'));
+  let artStyle = t.includes('cyber') ? 'Retro Neon' : (t.includes('pixel') ? 'Pixel' : (t.includes('minimal') ? 'Minimalist' : 'Cyberpunk'));
+  let moodTheme = t.includes('relax') ? 'Relaxing' : (t.includes('future') || t.includes('weapon') ? 'Sci-Fi' : 'Action');
+  let mechanics = [];
+
+  let archetype = '2D_SHOOTER';
+  let isGeneratable = true;
+
+  // Keyword mapping for archetypes
+  if (t.includes('chess')) {
+    archetype = 'CHESS';
+    genre = 'Strategy';
+    mechanics = ['board strategy', 'turn based', 'piece movements'];
+  } else if (t.includes('brick') || t.includes('arkanoid') || t.includes('puzzle') || t.includes('logic')) {
+    archetype = '2D_BRICK';
+    genre = 'Puzzle';
+    dimension = '2D';
+    mechanics = ['paddle bounce', 'brick destruction', 'escalating difficulty'];
+  } else if (t.includes('snake') || t.includes('tron') || t.includes('slither')) {
+    archetype = '2D_SNAKE';
+    genre = 'Arcade';
+    dimension = '2D';
+    mechanics = ['grid vector movement', 'food collection', 'tail growth'];
+  } else if (t.includes('tank') || t.includes('artillery') || t.includes('warfare')) {
+    archetype = '2D_TANK';
+    genre = 'Action / Warfare';
+    dimension = '2D';
+    mechanics = ['turret rotation', 'shell physics', 'enemy arena'];
+  } else if (t.includes('doodle') || t.includes('jumper') || t.includes('bounce tower')) {
+    archetype = '2D_JUMPER';
+    genre = 'Platformer';
+    dimension = '2D';
+    mechanics = ['vertical bounce', 'floating platforms', 'height score'];
+  } else if (t.includes('pacman') || t.includes('pac-man') || t.includes('dot chaser')) {
+    archetype = '2D_PACMAN';
+    genre = 'Arcade';
+    dimension = '2D';
+    mechanics = ['maze navigation', 'pellet collection', 'ghost dodging'];
+  } else if (t.includes('runner') || t.includes('infinite run') || t.includes('subway') || t.includes('slope')) {
+    if (dimension === '3D' || t.includes('3d')) {
+      archetype = '3D_RUNNER';
+      dimension = '3D';
+    } else {
+      archetype = '2D_RUNNER';
+      dimension = '2D';
+    }
+    genre = 'Endless Runner';
+    mechanics = ['lane switching', 'obstacle avoidance', 'speed scaling'];
+  } else if (t.includes('zombie') || t.includes('shooter 3d') || t.includes('top down 3d')) {
+    archetype = '3D_SHOOTER';
+    genre = 'Shooter';
+    dimension = '3D';
+    mechanics = ['360 twin-stick aim', 'horde survival', 'laser weapons'];
+  } else if (t.includes('maze') || t.includes('labyrinth') || t.includes('dungeon')) {
+    archetype = '3D_MAZE';
+    genre = 'Exploration';
+    dimension = '3D';
+    mechanics = ['first person / top down view', 'key collection', 'exit navigation'];
+  } else if (t.includes('shooter') || t.includes('shooting') || t.includes('laser') || t.includes('weapons') || t.includes('space')) {
+    archetype = '2D_SHOOTER';
+    genre = 'Shooter';
+    dimension = '2D';
+    mechanics = ['plasma blasters', 'laser fire', 'enemy waves'];
+  } else if (t.includes('open world') || t.includes('rpg') || t.includes('gta') || t.includes('witcher') || t.includes('skyrim') || t.includes('elden ring')) {
+    archetype = 'REC_ONLY';
+    genre = 'Open World RPG / AAA';
+    isGeneratable = false;
+    mechanics = ['open world exploration', 'deep narrative', 'character customization'];
+  }
+
+  const scopeExplanation = isGeneratable
+    ? `Matches playable browser archetype [${archetype}]. Interactive prototype generated!`
+    : `High complexity AAA / Open World request. Recommending existing curated game titles.`;
+
+  return {
+    genre,
+    dimension,
+    platform,
+    multiplayer,
+    mechanics,
+    difficulty,
+    artStyle,
+    moodTheme,
+    archetype,
+    isGeneratable,
+    scopeExplanation,
+    promptText: text
+  };
+}
