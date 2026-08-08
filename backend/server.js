@@ -20,6 +20,9 @@ app.use('/api', apiRoutes);
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
 });
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV || 'development' });
+});
 
 // Serve static frontend assets in production build if available
 const publicPath = path.resolve(process.cwd(), 'dist');
