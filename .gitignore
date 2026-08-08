@@ -1,34 +1,41 @@
+# Environment & Secret Files (STRICTLY EXCLUDED FROM COMMITS)
+.env
+.env*
+*.env
+*.env.*
+!.env.example
+
 # Dependencies
 node_modules/
 .pnpm-store/
 
-# Local Environment Variables
-.env
-.env.local
-.env.production
-.env.development
-
-# Production Build Output
+# Production Builds
 dist/
 build/
+out/
 
-# Operating System Files
+# OS Files
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
 
-# Logs
-logs
+# Logs & Diagnostics
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Runtime / Session Data
+# Runtime & Session Data
 data/session_history.json
+.cache/
 
-# IDE / Editor Files
+# Editor & IDE Configs
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
