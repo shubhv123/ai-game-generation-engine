@@ -730,6 +730,27 @@ function clearLocalHistory() {
   try { localStorage.removeItem('ia_history'); } catch {}
 }
 
+window.toggleCanvasFullscreen = function() {
+  const container = document.getElementById('canvas-wrap');
+  if (!container) return;
+
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    if (container.requestFullscreen) {
+      container.requestFullscreen();
+    } else if (container.webkitRequestFullscreen) {
+      container.webkitRequestFullscreen();
+    } else if (container.msRequestFullscreen) {
+      container.msRequestFullscreen();
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  }
+};
+
 // Check backend status and attach listeners on module load
 document.addEventListener('DOMContentLoaded', () => {
   checkBackend();

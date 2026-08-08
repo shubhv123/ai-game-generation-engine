@@ -1,3 +1,7 @@
+# Private Documentation (Not pushed to GitHub)
+VENATOR_ARCADE_DOCS.md
+DOCUMENTATION.md
+
 # Environment & Secret Files (STRICTLY EXCLUDED FROM COMMITS)
 .env
 .env*
