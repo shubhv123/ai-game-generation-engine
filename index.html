@@ -475,6 +475,184 @@
     }
 
     .hidden { display: none !important; }
+
+    /* =============================================
+       MOBILE & RESPONSIVE BREAKPOINTS
+    ============================================= */
+    @media (max-width: 960px) {
+      .page {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Navbar */
+      .navbar {
+        padding: 12px 16px;
+      }
+      .nav-left {
+        gap: 12px;
+      }
+      .nav-logo {
+        font-size: 13px;
+      }
+      .nav-links {
+        gap: 4px;
+      }
+      .nav-link {
+        padding: 6px 10px;
+        font-size: 9px;
+      }
+      .nav-center {
+        display: none;
+      }
+      .nav-icon-btn {
+        padding: 6px 10px;
+        font-size: 9px;
+      }
+      #gen-backend-badge {
+        display: none;
+      }
+
+      /* Hero Page */
+      .hero-immersive-layout {
+        padding: 24px 16px;
+        height: auto;
+        min-height: calc(100vh - 70px);
+        gap: 32px;
+      }
+      .hero-meta-row {
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        text-align: center;
+      }
+      .hero-meta-item {
+        text-align: center !important;
+      }
+      .hero-main-title {
+        font-size: clamp(22px, 6vw, 32px);
+        letter-spacing: 1px;
+      }
+      .btn-moss-start {
+        font-size: 16px;
+        padding: 14px 28px;
+      }
+      .hero-bottom-row {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center !important;
+        align-items: center;
+      }
+      .hero-callout {
+        max-width: 100%;
+        text-align: center !important;
+      }
+
+      /* Search Page */
+      .search-container {
+        padding: 0 14px 40px;
+        margin: 14px auto 30px;
+      }
+      .search-big-input {
+        padding: 10px 14px;
+      }
+      .search-big-input input {
+        font-size: 15px;
+      }
+      .chips-row {
+        gap: 6px;
+      }
+      .chip {
+        padding: 8px 12px;
+        font-size: 9px;
+      }
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+      .pagination-bar {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        text-align: center;
+      }
+      .pixel-page-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      .generate-cta-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 18px;
+        gap: 16px;
+      }
+
+      /* Generate Studio Page */
+      .generate-layout {
+        flex-direction: column;
+        height: auto;
+        padding: 12px;
+        gap: 16px;
+      }
+      .gen-panel-left {
+        width: 100%;
+        max-height: none;
+        overflow: visible;
+        padding: 16px;
+      }
+      .gen-panel-right {
+        width: 100%;
+      }
+      .canvas-wrap {
+        min-height: 340px;
+        height: 52vh;
+      }
+      .hud-bar {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 10px 12px;
+        height: auto;
+        justify-content: center;
+      }
+      #controls-guide-text {
+        order: 3;
+        width: 100%;
+        max-width: 100%;
+        margin-top: 4px;
+      }
+      .modal-box {
+        width: 90vw;
+        max-width: 360px;
+        padding: 24px 16px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .navbar {
+        padding: 10px 12px;
+      }
+      .nav-logo {
+        font-size: 11px;
+      }
+      .nav-link {
+        padding: 5px 8px;
+        font-size: 8px;
+      }
+      .hero-main-title {
+        font-size: 20px;
+      }
+      .btn-moss-start {
+        font-size: 14px;
+        padding: 12px 22px;
+      }
+      .canvas-wrap {
+        min-height: 280px;
+        height: 45vh;
+      }
+      .canvas-fullscreen-btn {
+        padding: 4px 8px;
+        font-size: 8px;
+      }
+    }
   </style>
 </head>
 <body>
