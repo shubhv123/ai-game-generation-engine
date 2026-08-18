@@ -480,6 +480,15 @@
        MOBILE & RESPONSIVE BREAKPOINTS
     ============================================= */
     @media (max-width: 960px) {
+      /* Remove blurry scanlines and heavy filters on mobile */
+      .scanline-overlay {
+        display: none !important;
+      }
+      .pixel-window, .navbar, .hud-bar, .result-card, .generate-cta-banner, .modal-overlay {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
       .page {
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
@@ -487,19 +496,20 @@
       
       /* Navbar */
       .navbar {
-        padding: 12px 16px;
+        padding: 10px 14px;
+        background: var(--pixel-blue);
       }
       .nav-left {
-        gap: 12px;
+        gap: 10px;
       }
       .nav-logo {
-        font-size: 13px;
+        font-size: 12px;
       }
       .nav-links {
         gap: 4px;
       }
       .nav-link {
-        padding: 6px 10px;
+        padding: 6px 8px;
         font-size: 9px;
       }
       .nav-center {
@@ -515,10 +525,10 @@
 
       /* Hero Page */
       .hero-immersive-layout {
-        padding: 24px 16px;
+        padding: 20px 14px;
         height: auto;
-        min-height: calc(100vh - 70px);
-        gap: 32px;
+        min-height: calc(100vh - 65px);
+        gap: 28px;
       }
       .hero-meta-row {
         flex-wrap: wrap;
@@ -530,16 +540,16 @@
         text-align: center !important;
       }
       .hero-main-title {
-        font-size: clamp(22px, 6vw, 32px);
+        font-size: clamp(20px, 5.5vw, 28px);
         letter-spacing: 1px;
       }
       .btn-moss-start {
-        font-size: 16px;
-        padding: 14px 28px;
+        font-size: 15px;
+        padding: 12px 24px;
       }
       .hero-bottom-row {
         flex-direction: column;
-        gap: 20px;
+        gap: 18px;
         text-align: center !important;
         align-items: center;
       }
@@ -550,14 +560,34 @@
 
       /* Search Page */
       .search-container {
-        padding: 0 14px 40px;
-        margin: 14px auto 30px;
+        padding: 0 12px 40px;
+        margin: 12px auto 30px;
       }
       .search-big-input {
-        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 16px;
+        overflow: hidden;
       }
       .search-big-input input {
-        font-size: 15px;
+        width: 100%;
+        min-width: 0;
+        font-size: 14px;
+        padding: 6px 4px;
+        border-bottom: 2px dashed #e2e8f0;
+        border-radius: 0;
+      }
+      .search-big-input .btn-moss-start {
+        width: 100%;
+        padding: 10px 14px !important;
+        font-size: 11px !important;
+        letter-spacing: 0.5px !important;
+        border-width: 2px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 3px 0 var(--pixel-green-border) !important;
       }
       .chips-row {
         gap: 6px;
@@ -603,8 +633,8 @@
         width: 100%;
       }
       .canvas-wrap {
-        min-height: 340px;
-        height: 52vh;
+        min-height: 320px;
+        height: 50vh;
       }
       .hud-bar {
         flex-wrap: wrap;
@@ -628,25 +658,25 @@
 
     @media (max-width: 480px) {
       .navbar {
-        padding: 10px 12px;
+        padding: 8px 10px;
       }
       .nav-logo {
         font-size: 11px;
       }
       .nav-link {
-        padding: 5px 8px;
+        padding: 4px 6px;
         font-size: 8px;
       }
       .hero-main-title {
-        font-size: 20px;
+        font-size: 19px;
       }
       .btn-moss-start {
-        font-size: 14px;
-        padding: 12px 22px;
+        font-size: 13px;
+        padding: 10px 18px;
       }
       .canvas-wrap {
-        min-height: 280px;
-        height: 45vh;
+        min-height: 260px;
+        height: 42vh;
       }
       .canvas-fullscreen-btn {
         padding: 4px 8px;
