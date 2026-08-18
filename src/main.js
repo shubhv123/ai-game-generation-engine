@@ -1,3 +1,4 @@
+import confetti from 'canvas-confetti';
 import { ThreeEngine } from '/src/engine/ThreeEngine.js';
 import { semanticClassifier } from '/src/magicTranslator.js';
 import { GameRunner } from '/src/engine/GameRunner.js';
@@ -388,7 +389,11 @@ window.launchGame = async function() {
         renderCustomIframe(data.code);
         addChatMessage(`✨ AI generated custom game code for "${promptToUse}"`, 'ai');
         const guideEl = document.getElementById('controls-guide-text');
-        if (guideEl) guideEl.textContent = `🎮 Custom LLM Game: "${promptToUse}"`;
+        const shortPrompt = promptToUse.length > 38 ? promptToUse.slice(0, 38) + '...' : promptToUse;
+        if (guideEl) {
+          guideEl.textContent = `🎮 Custom: "${shortPrompt}"`;
+          guideEl.title = `Custom Game: "${promptToUse}"`;
+        }
       }
     } catch (e) {
       window.hideLoading();
@@ -789,6 +794,133 @@ window.toggleCanvasFullscreen = function() {
       document.webkitExitFullscreen();
     }
   }
+};
+
+window.exportCurrentGame = function() {
+  const customCode = window._app.lastCustomCode;
+  const customPrompt = window._app.lastCustomPrompt || 'Venator Game';
+  const archetype = window._app.selectedArchetype || '2D_SHOOTER';
+
+  let standaloneHtml = '';
+  let gameTitle = customPrompt.replace(/["']/g, '');
+
+  if (customCode) {
+    const cleanCode = sanitizeCodeForIframe(customCode);
+    standaloneHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${gameTitle} — Venator Arcade Standalone Edition</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090d16;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+    #gameCanvas {
+      background: #0f172a;
+      border: 4px solid #407a1e;
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(101, 163, 13, 0.3);
+      max-width: 95vw;
+      max-height: 85vh;
+      cursor: pointer;
+    }
+    .game-hud {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 800px;
+      max-width: 95vw;
+      padding: 10px 18px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .game-hud strong { color: #84cc16; }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      background: #407a1e;
+      color: #fff;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div class="game-hud">
+    <div>🎮 <strong>${gameTitle}</strong></div>
+    <div class="badge">STANDALONE EDITION</div>
+    <div>⚔️ Built with <strong>Venator Arcade</strong></div>
+  </div>
+  <script>
+    try {
+      ${cleanCode}
+    } catch(err) {
+      console.error("Game error:", err);
+      alert("Game encountered an issue: " + err.message);
+    }
+  <\/script>
+</body>
+</html>`;
+  } else {
+    gameTitle = archetype.replace(/_/g, ' ');
+    standaloneHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${gameTitle} — Venator Arcade Standalone</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+    canvas { background: #000; border: 4px solid #407a1e; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div style="margin-top: 12px; color: #84cc16; font-weight: bold;">⚔️ ${gameTitle} — Built with Venator Arcade</div>
+</body>
+</html>`;
+  }
+
+  // Trigger browser download
+  const cleanFileName = (gameTitle || 'venator-game').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const blob = new Blob([standaloneHtml], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${cleanFileName || 'venator-game'}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  // Confetti effect & in-app chat announcement
+  try {
+    confetti({
+      particleCount: 60,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+  } catch(e) {}
+
+  addChatMessage(`💾 Exported standalone file: "${cleanFileName}.html" (Ready for itch.io, mobile, or offline play!)`, 'ai');
 };
 
 // Check backend status and attach listeners on module load
