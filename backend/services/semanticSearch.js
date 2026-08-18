@@ -5,17 +5,18 @@ import { generateRecommendationRationale } from '../../ai/rationaleGenerator.js'
 import { generateLLMRecommendations } from '../../ai/llmRecommender.js';
 
 /**
- * Semantic search & ranking over game catalog.
+ * Semantic search & ranking over game catalog with Pagination and On-Demand AI Rationale Generation.
  * 
- * Tiered Strategy:
- *  1. Score every local DB game — if any score ≥ MIN_GOOD_SCORE, use them
- *  2. If local is weak → ask the LLM directly to recommend real games (primary fallback)
- *  3. If LLM is offline/fails → try RAWG API
- *  4. If RAWG also fails → DuckDuckGo web search
- *  5. Last resort: show top-rated local games with disclaimer
+ * Strategy:
+ *  1. Search & score entire catalog/fallbacks.
+ *  2. Filter and rank all relevant matches.
+ *  3. Slice requested page (e.g. page 1 = items 0-5, page 2 = items 6-11).
+ *  4. Generate AI rationales ONLY for the 6 games on the requested page to avoid LLM overload.
  */
-export async function searchAndRankGames(userPrompt, parsedAttrs, userPreferences = {}) {
+export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPreferences = {}, page = 1, limit = 6) {
   const promptText = (userPrompt || '').toLowerCase().trim();
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.max(1, parseInt(limit, 10) || 6);
 
   // Build token set
   const rawTokens = promptText.split(/[\s,]+/).filter(t => t.length > 2);
@@ -62,16 +63,16 @@ export async function searchAndRankGames(userPrompt, parsedAttrs, userPreference
   let localScored = GAME_DATABASE.map(scoreGame);
   localScored.sort((a, b) => b.score - a.score || b.rating - a.rating);
 
-  const MIN_GOOD_SCORE = 25;
+  const MIN_GOOD_SCORE = 15;
   const goodLocal = localScored.filter(g => g.score >= MIN_GOOD_SCORE);
   const bestLocalScore = localScored[0]?.score ?? 0;
 
-  let finalResults = [];
+  let allMatchedResults = [];
 
   if (goodLocal.length >= 4) {
-    // Local DB is sufficient
-    console.log(`[SemanticSearch] Good local matches (${goodLocal.length}), using local DB.`);
-    finalResults = goodLocal.slice(0, 6);
+    // Local DB has plenty of matches
+    console.log(`[SemanticSearch] Found ${goodLocal.length} good local matches in DB.`);
+    allMatchedResults = goodLocal;
   } else {
     // --- Primary fallback: Ask LLM to recommend real games ---
     console.log(`[SemanticSearch] Local matches thin (best=${bestLocalScore}), asking LLM for recommendations...`);
@@ -79,20 +80,19 @@ export async function searchAndRankGames(userPrompt, parsedAttrs, userPreference
     
     if (llmRecs.length >= 3) {
       console.log(`[SemanticSearch] LLM returned ${llmRecs.length} recommendations.`);
-      // Merge LLM results with any good local hits
       const seen = new Set(llmRecs.map(g => g.title.toLowerCase()));
       const remainingLocal = goodLocal.filter(g => !seen.has(g.title.toLowerCase()));
-      finalResults = [...llmRecs, ...remainingLocal].slice(0, 6);
+      allMatchedResults = [...llmRecs, ...remainingLocal, ...localScored.filter(g => !seen.has(g.title.toLowerCase()))];
     } else {
       // --- Secondary fallback: RAWG API ---
       console.log(`[SemanticSearch] LLM failed, trying RAWG...`);
-      const rawgGames = await fetchRawgGames(userPrompt, 6);
+      const rawgGames = await fetchRawgGames(userPrompt, 12);
       
       if (rawgGames.length >= 2) {
         const rawgScored = rawgGames.map(g => ({ ...g, score: 60, matchPercentage: 78, matchedTagsArray: searchTokens.slice(0, 3) }));
         const seen = new Set(rawgScored.map(g => g.title.toLowerCase()));
         const remainingLocal = goodLocal.filter(g => !seen.has(g.title.toLowerCase()));
-        finalResults = [...rawgScored, ...remainingLocal].slice(0, 6);
+        allMatchedResults = [...rawgScored, ...remainingLocal, ...localScored.filter(g => !seen.has(g.title.toLowerCase()))];
       } else {
         // --- Tertiary fallback: DuckDuckGo web search ---
         console.log(`[SemanticSearch] RAWG empty, trying web search...`);
@@ -100,30 +100,39 @@ export async function searchAndRankGames(userPrompt, parsedAttrs, userPreference
         const webScored = webResults.map(g => ({ ...g, score: 50, matchPercentage: 70, matchedTagsArray: searchTokens.slice(0, 2) }));
         const seen = new Set(webScored.map(g => g.title.toLowerCase()));
         const remainingLocal = goodLocal.filter(g => !seen.has(g.title.toLowerCase()));
-        finalResults = [...webScored, ...remainingLocal].slice(0, 6);
+        allMatchedResults = [...webScored, ...remainingLocal, ...localScored.filter(g => !seen.has(g.title.toLowerCase()))];
       }
       
-      // If still empty after all fallbacks, use top rated local
-      if (finalResults.length === 0) {
+      if (allMatchedResults.length === 0) {
         console.log('[SemanticSearch] All sources exhausted. Returning top-rated local games.');
-        finalResults = localScored.slice(0, 4).map(g => ({ ...g, matchPercentage: 45, matchedTagsArray: [] }));
+        allMatchedResults = localScored.slice(0, 24).map(g => ({ ...g, matchPercentage: 45, matchedTagsArray: [] }));
       }
     }
   }
 
-  // Deduplicate by title
-  const seen = new Set();
-  finalResults = finalResults.filter(g => {
-    const key = (g.title || '').toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
+  // Deduplicate all matches by title
+  const seenTitles = new Set();
+  allMatchedResults = allMatchedResults.filter(g => {
+    const key = (g.title || '').toLowerCase().trim();
+    if (!key || seenTitles.has(key)) return false;
+    seenTitles.add(key);
     return true;
-  }).slice(0, 6);
+  });
 
-  // Generate rationale only for non-LLM results (LLM results already have rationale)
+  const totalMatches = allMatchedResults.length;
+  const totalPages = Math.max(1, Math.ceil(totalMatches / pageSize));
+  const validPage = Math.max(1, Math.min(pageNum, totalPages));
+
+  // Slice ONLY the games for the requested page
+  const startIndex = (validPage - 1) * pageSize;
+  const pageSlice = allMatchedResults.slice(startIndex, startIndex + pageSize);
+
+  console.log(`[SemanticSearch] Serving Page ${validPage}/${totalPages} (${pageSlice.length} games of ${totalMatches} total). Generating AI rationales on-demand...`);
+
+  // Generate AI rationales ONLY for the current page slice on-demand
   const resultsWithRationale = await Promise.all(
-    finalResults.map(async (game) => {
-      // LLM-generated results already have rationale
+    pageSlice.map(async (game) => {
+      // If rationale is already present (e.g. LLM-generated), keep it
       const rationale = game.rationale ||
         await generateRecommendationRationale(
           userPrompt,
@@ -133,7 +142,7 @@ export async function searchAndRankGames(userPrompt, parsedAttrs, userPreference
         );
 
       return {
-        id: game.id,
+        id: game.id || `game_${Math.random().toString(36).substr(2, 9)}`,
         title: game.title,
         genre: game.genre,
         tags: game.tags || [],
@@ -150,5 +159,17 @@ export async function searchAndRankGames(userPrompt, parsedAttrs, userPreference
     })
   );
 
-  return resultsWithRationale;
+  return {
+    recommendations: resultsWithRationale,
+    pagination: {
+      currentPage: validPage,
+      totalPages,
+      totalMatches,
+      limit: pageSize,
+      hasNext: validPage < totalPages,
+      hasPrev: validPage > 1,
+      startIndex: startIndex + 1,
+      endIndex: Math.min(startIndex + pageSlice.length, totalMatches)
+    }
+  };
 }

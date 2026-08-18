@@ -14,7 +14,7 @@ const router = express.Router();
  */
 router.post('/recommend', async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, page = 1, limit = 6 } = req.body;
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Valid prompt text is required' });
     }
@@ -24,8 +24,19 @@ router.post('/recommend', async (req, res) => {
     // 1. Natural Language Attribute Extraction using Ollama Cloud LLM
     const attributes = await parsePromptAttributes(prompt);
 
-    // 2. Query Game DB + RAWG + Web search fallback & Rank results
-    const recommendations = await searchAndRankGames(prompt, attributes, userPrefs);
+    // 2. Query Game DB + RAWG + Web search fallback & Rank results with Pagination
+    const searchResult = await searchAndRankGames(prompt, attributes, userPrefs, page, limit);
+    const recommendations = searchResult.recommendations || [];
+    const pagination = searchResult.pagination || {
+      currentPage: 1,
+      totalPages: 1,
+      totalMatches: recommendations.length,
+      limit: 6,
+      hasNext: false,
+      hasPrev: false,
+      startIndex: 1,
+      endIndex: recommendations.length
+    };
 
     // 3. ALWAYS synthesize a game config — never block the user from generating
     // The archetype might be REC_ONLY from LLM, but we override it with a sensible default
@@ -67,7 +78,8 @@ router.post('/recommend', async (req, res) => {
       archetype: attributes.archetype,
       scopeExplanation: attributes.scopeExplanation,
       gameConfig: gameConfig,
-      recommendations: recommendations
+      recommendations: recommendations,
+      pagination: pagination
     });
   } catch (error) {
     console.error('[API /recommend] Error:', error);

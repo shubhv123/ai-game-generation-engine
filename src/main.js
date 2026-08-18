@@ -95,13 +95,17 @@ window.setSearchAndGo = function(prompt) {
   window.doSearch();
 };
 
-window.doSearch = async function() {
+window.doSearch = async function(page = 1) {
   const input = document.getElementById('search-main-input');
-  const prompt = input.value.trim();
+  const prompt = (input ? input.value.trim() : '') || window._app.lastSearchPrompt;
   if (!prompt) return;
 
   window._app.lastSearchPrompt = prompt;
-  window.showLoading('Searching...', `🧠 AI parsing: "${prompt.slice(0, 40)}..."`);
+  window._app.currentSearchPage = page;
+
+  if (page === 1) {
+    window.showLoading('Searching...', `🧠 AI parsing: "${prompt.slice(0, 40)}..."`);
+  }
 
   const resultsArea = document.getElementById('search-results-area');
   const emptyState = document.getElementById('search-empty-state');
@@ -112,11 +116,15 @@ window.doSearch = async function() {
   if (resultsArea) {
     resultsArea.innerHTML = `
       <div class="results-header">
-        <div class="results-title">Finding matches...</div>
+        <div class="results-title">Finding matches for Page ${page}...</div>
       </div>
       <div class="results-grid">
         ${Array(6).fill('<div class="skeleton skeleton-card"></div>').join('')}
       </div>`;
+    
+    if (page > 1) {
+      resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   try {
@@ -125,7 +133,7 @@ window.doSearch = async function() {
       const res = await fetch(`${API_BASE}/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt, page, limit: 6 })
       });
       if (res.ok) data = await res.json();
       window._app.isBackendOnline = true;
@@ -149,18 +157,50 @@ window.doSearch = async function() {
   saveToHistory(prompt);
 };
 
+window.goToSearchPage = function(targetPage) {
+  window.doSearch(targetPage);
+};
+
 function renderSearchResults(data) {
-  const { recommendations, prompt } = data;
+  const { recommendations, prompt, pagination } = data;
   const resultsArea = document.getElementById('search-results-area');
   const ctaBanner = document.getElementById('generate-cta-banner');
+
+  const currentPage = pagination?.currentPage || 1;
+  const totalPages = pagination?.totalPages || 1;
+  const totalMatches = pagination?.totalMatches || recommendations.length;
+  const hasNext = pagination?.hasNext || false;
+  const hasPrev = pagination?.hasPrev || false;
+  const startIndex = pagination?.startIndex || 1;
+  const endIndex = pagination?.endIndex || recommendations.length;
 
   if (resultsArea) {
     resultsArea.innerHTML = `
       <div class="results-header">
         <div class="results-title">AI Recommendations for "${prompt}"</div>
-        <div class="results-count">${recommendations.length} matches</div>
+        <div class="results-count">${totalMatches} matches (Page ${currentPage}/${totalPages})</div>
       </div>
-      <div class="results-grid" id="recs-grid"></div>`;
+      <div class="results-grid" id="recs-grid"></div>
+      
+      ${totalPages > 1 ? `
+        <div class="pagination-bar">
+          <button class="pixel-page-btn ${!hasPrev ? 'disabled' : ''}" 
+                  ${hasPrev ? `onclick="goToSearchPage(${currentPage - 1})"` : 'disabled'}>
+            ◀ PREV
+          </button>
+          
+          <div class="pixel-page-info">
+            <span>PAGE ${currentPage} OF ${totalPages}</span>
+            <span style="font-size:9px;color:rgba(255,255,255,0.7)">Showing ${startIndex}–${endIndex} of ${totalMatches} games</span>
+          </div>
+          
+          <button class="pixel-page-btn ${!hasNext ? 'disabled' : ''}" 
+                  ${hasNext ? `onclick="goToSearchPage(${currentPage + 1})"` : 'disabled'}>
+            NEXT ▶
+          </button>
+        </div>
+      ` : ''}
+    `;
 
     const grid = document.getElementById('recs-grid');
     recommendations.forEach((game, i) => {

@@ -301,6 +301,65 @@
     .result-card-rationale { font-size: 13px; font-weight: 600; color: #334155; line-height: 1.5; margin-bottom: 14px; }
     .result-match { font-family: var(--pixel-font-title); font-size: 9px; padding: 4px 8px; border-radius: 6px; background: #dcfce7; color: #15803d; border: 2px solid #22c55e; }
 
+    /* PAGINATION BAR */
+    .pagination-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 24px 0 32px;
+      padding: 14px 20px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 3px solid var(--pixel-blue);
+      border-radius: 16px;
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+    }
+    .pixel-page-btn {
+      padding: 10px 20px;
+      border-radius: 10px;
+      border: 2px solid var(--pixel-blue-dark);
+      background: var(--pixel-blue);
+      color: #fff;
+      font-family: var(--pixel-font-title);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      box-shadow: 0 4px 0 var(--pixel-blue-dark);
+      transition: all 0.15s ease;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pixel-page-btn:hover:not(.disabled):not(:disabled) {
+      background: var(--pixel-green-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 0 var(--pixel-blue-dark);
+    }
+    .pixel-page-btn:active:not(.disabled):not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 var(--pixel-blue-dark);
+    }
+    .pixel-page-btn.disabled, .pixel-page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      background: #475569;
+      border-color: #334155;
+      box-shadow: 0 4px 0 #1e293b;
+      pointer-events: none;
+    }
+    .pixel-page-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--pixel-font-title);
+      font-size: 11px;
+      color: #ffffff;
+      text-shadow: 1px 1px 0 #000;
+    }
+
     .generate-cta-banner {
       background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px);
       border: 4px solid var(--pixel-blue);
