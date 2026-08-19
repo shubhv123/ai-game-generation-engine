@@ -897,10 +897,12 @@
         <div class="hud-bar">
           <div>SCORE <span id="canvas-score" style="color:var(--pixel-blue)">0</span></div>
           <div id="controls-guide-text">Select a game type and click Start Game</div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-retro-bevel" onclick="exportCurrentGame()" title="Download standalone offline HTML game for itch.io / Web" style="padding:6px 12px;font-size:9px;background:#facc15;color:#0f172a;border-color:#ca8a04">💾 EXPORT</button>
-            <button class="btn-retro-bevel" onclick="toggleCanvasFullscreen()" style="padding:6px 12px;font-size:9px">⛶ FULLSCREEN</button>
-            <button class="btn-retro-bevel" onclick="restartCurrentGame()" style="padding:6px 12px;font-size:9px">RESTART</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+            <button class="btn-retro-bevel btn-audio-sfx-toggle" onclick="toggleAppAudio()" title="Toggle Sound FX" style="padding:6px 10px;font-size:9px">🔊 SFX ON</button>
+            <button class="btn-retro-bevel btn-audio-bgm-toggle" onclick="toggleAppBGM()" title="Toggle 8-Bit Chiptune Music" style="padding:6px 10px;font-size:9px">🎵 BGM</button>
+            <button class="btn-retro-bevel" onclick="exportCurrentGame()" title="Download standalone offline HTML game for itch.io / Web" style="padding:6px 10px;font-size:9px;background:#facc15;color:#0f172a;border-color:#ca8a04">💾 EXPORT</button>
+            <button class="btn-retro-bevel" onclick="toggleCanvasFullscreen()" style="padding:6px 10px;font-size:9px">⛶ FULLSCREEN</button>
+            <button class="btn-retro-bevel" onclick="restartCurrentGame()" style="padding:6px 10px;font-size:9px">RESTART</button>
           </div>
         </div>
 

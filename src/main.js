@@ -1,4 +1,5 @@
 import confetti from 'canvas-confetti';
+import { soundManager } from '/src/audio.js';
 import { ThreeEngine } from '/src/engine/ThreeEngine.js';
 import { semanticClassifier } from '/src/magicTranslator.js';
 import { GameRunner } from '/src/engine/GameRunner.js';
@@ -9,8 +10,10 @@ import { GameMaze } from '/src/engine/GameMaze.js';
 import { GameChess3D } from '/src/engine/GameChess.js';
 import { Game2DEngine } from '/src/engine/Game2D.js';
 
-const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001/api'
+window.soundManager = soundManager;
+
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.') || window.location.hostname.startsWith('172.'))
+  ? `http://${window.location.hostname}:3001/api`
   : '/api';
 
 // ============================================
@@ -457,6 +460,74 @@ function renderCustomIframe(code) {
         window.onerror = function(msg, url, line) {
           window.parent.postMessage({ type: 'GAME_ERROR', error: msg + ' (line ' + line + ')' }, '*');
         };
+
+        // ZzFX Micro Sound Synthesizer (MIT License - Frank Force)
+        window.zzfxX = window.zzfxX || null;
+        var zzfxR = 44100;
+        function _getZzfxCtx() {
+          if (!window.zzfxX) {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) window.zzfxX = new AC();
+          }
+          if (window.zzfxX && window.zzfxX.state === 'suspended') window.zzfxX.resume();
+          return window.zzfxX;
+        }
+
+        // Global User Interaction Unlock
+        ['click', 'mousedown', 'keydown', 'touchstart'].forEach(evt => {
+          window.addEventListener(evt, () => _getZzfxCtx(), { once: true, passive: true });
+        });
+
+        window.zzfx = (...t) => {
+          const ctx = _getZzfxCtx();
+          if (!ctx) return null;
+          const p = zzfxG(...t);
+          const src = ctx.createBufferSource();
+          const buf = ctx.createBuffer(1, p.length, zzfxR);
+          buf.getChannelData(0).set(p);
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          src.start();
+          return src;
+        };
+
+        function zzfxG(q=1,k=.05,c=220,e=0,t=0,u=.1,j=0,v=1,m=0,r=0,s=0,h=0,w=0,x=0,y=0,z=0,A=0,l=1,B=0,C=0) {
+          let b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
+          t=t*zzfxR|0;u=u*zzfxR|0;j=j*zzfxR|0;A=A*zzfxR|0;B=B*zzfxR|0;m*=(500*b)/zzfxR**3;x*=b/zzfxR;s*=b/zzfxR;h=h*zzfxR|0;w=w*zzfxR|0;z=z*zzfxR|0;C*=b/zzfxR;
+          for(let K=t+u+j+A+B|0,L=0;L<K;++L){
+            ++N>=h&&(N=0,d=2*Math.random()-1);d&&(G=d>0?1:-1);
+            p[L]=(L<t?L/t:L<t+u?1-(L-t)/u*(1-y):L<t+u+j?y:L<K-B?(K-B-L)/A*y:0)*(L<t+u+j+A?Math.sin(F):1)*(L<t+u?(1-k)+k*Math.cos(L/J*b):1)*Math.sin(a);
+            a+=D+=v+=m;F+=x;g+=s;P+=C;q&&(p[L]=p[L]*q);
+          }
+          return p;
+        }
+
+        const ZZFX_PRESETS = {
+          laser: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+          shoot: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+          bullet: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+          explosion: [1.5,0,25,.04,0,.4,4,1.9,0,.1,0,0,.05,0,0,0,0,0,-.01,0],
+          hit: [1.4,0,80,.01,.05,.15,1,1.2,-9,0,0,0,0,.1,0,0,0,.5,0,0],
+          coin: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
+          pickup: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
+          jump: [1.3,0,140,.01,.1,.2,1,1.5,-4.4,0,0,0,0,.2,0,0,0,-.04,0,0],
+          powerup: [1.2,0,250,.01,.05,.2,1,1.1,-7,0,0,0,0,.1,0,0,0,.4,0,0],
+          gameover: [1.5,0,120,.05,.1,.3,1,1.1,-10,0,0,0,0,.1,0,0,0,.7,0,0],
+          win: [1.3,0,523,.05,.05,.35,1,1.3,-5,0,0,0,0,.1,0,0,0,.6,0,0],
+          click: [0.8,0,300,0,.02,.02,0,1.5,-10,0,0,0,0,0,0,0,0,0,0,0]
+        };
+
+        window.playSound = function(type) {
+          try {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'PLAY_SOUND', sfx: type }, '*');
+            }
+            const key = (type || 'click').toLowerCase();
+            const sound = ZZFX_PRESETS[key] || ZZFX_PRESETS.click;
+            window.zzfx(...sound);
+          } catch(e) {}
+        };
+
         try {
           ${cleanCode}
         } catch(err) {
@@ -471,11 +542,45 @@ function renderCustomIframe(code) {
 }
 
 window.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'GAME_ERROR') {
+  if (!e.data) return;
+  if (e.data.type === 'GAME_ERROR') {
     console.warn('[IframeGameError]', e.data.error);
     addChatMessage(`⚠️ Runtime Error: ${e.data.error}`, 'ai');
+  } else if (e.data.type === 'PLAY_SOUND') {
+    soundManager.init();
+    const sfx = (e.data.sfx || 'coin').toLowerCase();
+    if (sfx === 'coin' || sfx === 'point' || sfx === 'score' || sfx === 'harvest') soundManager.playCoin();
+    else if (sfx === 'jump' || sfx === 'bounce') soundManager.playJump();
+    else if (sfx === 'laser' || sfx === 'shoot' || sfx === 'bullet') soundManager.playLaser();
+    else if (sfx === 'explosion' || sfx === 'destroy' || sfx === 'kill') soundManager.playExplosion();
+    else if (sfx === 'powerup') soundManager.playPowerup();
+    else if (sfx === 'hit' || sfx === 'damage') soundManager.playHit();
+    else if (sfx === 'win' || sfx === 'victory') soundManager.playWin();
+    else if (sfx === 'gameover' || sfx === 'die' || sfx === 'death') soundManager.playGameOver();
+    else if (sfx === 'click') soundManager.playClick();
   }
 });
+
+window.toggleAppAudio = function() {
+  const isEnabled = soundManager.toggleSFX();
+  const btns = document.querySelectorAll('.btn-audio-sfx-toggle');
+  btns.forEach(btn => {
+    btn.textContent = isEnabled ? '🔊 SFX ON' : '🔇 SFX OFF';
+    btn.style.opacity = isEnabled ? '1' : '0.6';
+  });
+  if (isEnabled) soundManager.playClick();
+};
+
+window.toggleAppBGM = function() {
+  const isPlaying = soundManager.toggleBGM();
+  const btns = document.querySelectorAll('.btn-audio-bgm-toggle');
+  btns.forEach(btn => {
+    btn.textContent = isPlaying ? '🎵 BGM ON' : '🎵 BGM OFF';
+    btn.style.background = isPlaying ? '#15803d' : '';
+    btn.style.color = isPlaying ? '#fff' : '';
+  });
+  if (isPlaying) soundManager.playCoin();
+};
 
 window.sendCustomTweak = async function() {
   const input = document.getElementById('ai-tweak-chat-input');
@@ -869,6 +974,69 @@ window.exportCurrentGame = function() {
     <div>⚔️ Built with <strong>Venator Arcade</strong></div>
   </div>
   <script>
+    // ZzFX Micro Sound Synthesizer (MIT License - Frank Force)
+    let zzfxX = null;
+    const zzfxR = 44100;
+    function _getZzfxCtx() {
+      if (!zzfxX) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) zzfxX = new AC();
+      }
+      if (zzfxX && zzfxX.state === 'suspended') zzfxX.resume();
+      return zzfxX;
+    }
+
+    ['click', 'mousedown', 'keydown', 'touchstart'].forEach(e => {
+      window.addEventListener(e, () => _getZzfxCtx(), { once: true, passive: true });
+    });
+
+    window.zzfx = (...t) => {
+      const ctx = _getZzfxCtx();
+      if (!ctx) return null;
+      const p = zzfxG(...t);
+      const src = ctx.createBufferSource();
+      const buf = ctx.createBuffer(1, p.length, zzfxR);
+      buf.getChannelData(0).set(p);
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start();
+      return src;
+    };
+
+    function zzfxG(q=1,k=.05,c=220,e=0,t=0,u=.1,j=0,v=1,m=0,r=0,s=0,h=0,w=0,x=0,y=0,z=0,A=0,l=1,B=0,C=0) {
+      let b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
+      t=t*zzfxR|0;u=u*zzfxR|0;j=j*zzfxR|0;A=A*zzfxR|0;B=B*zzfxR|0;m*=(500*b)/zzfxR**3;x*=b/zzfxR;s*=b/zzfxR;h=h*zzfxR|0;w=w*zzfxR|0;z=z*zzfxR|0;C*=b/zzfxR;
+      for(let K=t+u+j+A+B|0,L=0;L<K;++L){
+        ++N>=h&&(N=0,d=2*Math.random()-1);d&&(G=d>0?1:-1);
+        p[L]=(L<t?L/t:L<t+u?1-(L-t)/u*(1-y):L<t+u+j?y:L<K-B?(K-B-L)/A*y:0)*(L<t+u+j+A?Math.sin(F):1)*(L<t+u?(1-k)+k*Math.cos(L/J*b):1)*Math.sin(a);
+        a+=D+=v+=m;F+=x;g+=s;P+=C;q&&(p[L]=p[L]*q);
+      }
+      return p;
+    }
+
+    const ZZFX_PRESETS = {
+      laser: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+      shoot: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+      bullet: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
+      explosion: [1.5,0,25,.04,0,.4,4,1.9,0,.1,0,0,.05,0,0,0,0,0,-.01,0],
+      hit: [1.4,0,80,.01,.05,.15,1,1.2,-9,0,0,0,0,.1,0,0,0,.5,0,0],
+      coin: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
+      pickup: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
+      jump: [1.3,0,140,.01,.1,.2,1,1.5,-4.4,0,0,0,0,.2,0,0,0,-.04,0,0],
+      powerup: [1.2,0,250,.01,.05,.2,1,1.1,-7,0,0,0,0,.1,0,0,0,.4,0,0],
+      gameover: [1.5,0,120,.05,.1,.3,1,1.1,-10,0,0,0,0,.1,0,0,0,.7,0,0],
+      win: [1.3,0,523,.05,.05,.35,1,1.3,-5,0,0,0,0,.1,0,0,0,.6,0,0],
+      click: [0.8,0,300,0,.02,.02,0,1.5,-10,0,0,0,0,0,0,0,0,0,0,0]
+    };
+
+    window.playSound = function(type) {
+      try {
+        const key = (type || 'click').toLowerCase();
+        const sound = ZZFX_PRESETS[key] || ZZFX_PRESETS.click;
+        window.zzfx(...sound);
+      } catch(e) {}
+    };
+
     try {
       ${cleanCode}
     } catch(err) {
