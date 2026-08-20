@@ -1,7 +1,7 @@
 import express from 'express';
 import { parsePromptAttributes, GENERATABLE_ARCHETYPES } from '../../ai/attributeParser.js';
 import { generateGameConfig } from '../../ai/gameCodeGenerator.js';
-import { synthesizeCustomGameCode } from '../../ai/codeSynthesizer.js';
+import { synthesizeCustomGameCode, autoRepairGameCode } from '../../ai/codeSynthesizer.js';
 import { searchAndRankGames } from '../services/semanticSearch.js';
 import { HistoryStore } from '../services/historyStore.js';
 
@@ -127,6 +127,26 @@ router.post('/generate-code', async (req, res) => {
   } catch (error) {
     console.error('[API /generate-code] Error:', error);
     res.status(500).json({ error: 'Failed to generate custom game code', details: error.message });
+  }
+});
+
+/**
+ * POST /api/auto-repair
+ * Input: { brokenCode: string, errorDetails: string, userPrompt?: string }
+ * Output: { success: boolean, code?: string, explanation?: string, error?: string }
+ */
+router.post('/auto-repair', async (req, res) => {
+  try {
+    const { brokenCode, errorDetails, userPrompt } = req.body;
+    if (!brokenCode) {
+      return res.status(400).json({ error: 'brokenCode is required' });
+    }
+
+    const result = await autoRepairGameCode(brokenCode, errorDetails, userPrompt);
+    res.json(result);
+  } catch (error) {
+    console.error('[API /auto-repair] Error:', error);
+    res.status(500).json({ error: 'Failed to auto-repair game code', details: error.message });
   }
 });
 

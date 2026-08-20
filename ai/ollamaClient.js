@@ -31,8 +31,9 @@ export async function callOllamaLLM(messages, options = {}) {
         model: model,
         messages: messages,
         temperature: temperature,
-        max_tokens: options.maxTokens || 1024
-      })
+        max_tokens: options.maxTokens || 3500
+      }),
+      signal: AbortSignal.timeout(options.timeout || 50000)
     });
 
     if (!res.ok) {
@@ -55,7 +56,11 @@ export async function callOllamaLLM(messages, options = {}) {
       content: content
     };
   } catch (err) {
-    console.error('[OllamaClient] Fetch exception:', err.message);
+    console.error(`[OllamaClient] Fetch exception for ${model}:`, err.message);
+    if (model === PRIMARY_MODEL) {
+      console.log(`[OllamaClient] Retrying with fallback model ${FALLBACK_MODEL} after exception...`);
+      return await callOllamaLLM(messages, { ...options, model: FALLBACK_MODEL });
+    }
     return {
       success: false,
       error: err.message

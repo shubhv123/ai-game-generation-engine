@@ -9,12 +9,15 @@ import { GameRacing } from '/src/engine/GameRacing.js';
 import { GameMaze } from '/src/engine/GameMaze.js';
 import { GameChess3D } from '/src/engine/GameChess.js';
 import { Game2DEngine } from '/src/engine/Game2D.js';
+import { ArcadeReelManager } from '/src/reel.js';
 
 window.soundManager = soundManager;
 
 const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.') || window.location.hostname.startsWith('172.'))
   ? `http://${window.location.hostname}:3001/api`
   : '/api';
+
+window.arcadeReel = new ArcadeReelManager(API_BASE);
 
 // ============================================
 //   App State
@@ -41,7 +44,10 @@ window.navigateTo = function(page) {
   if (el) el.classList.add('active');
   app.currentPage = page;
 
-  if (page === 'generate') {
+  if (page === 'reel') {
+    window.arcadeReel.init();
+    checkBackend();
+  } else if (page === 'generate') {
     setTimeout(() => {
       if (!app.threeEngine) {
         app.threeEngine = new ThreeEngine(document.getElementById('webgl-canvas'));
@@ -50,6 +56,24 @@ window.navigateTo = function(page) {
     checkBackend();
   }
 };
+
+window.setReelPrompt = function(prompt) {
+  const input = document.getElementById('reel-custom-prompt-input');
+  if (input) input.value = prompt;
+};
+
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'REEL_GAME_ERROR') {
+    console.warn('[ReelGameError]', e.data.error, 'on card', e.data.cardIndex);
+    if (window.arcadeReel) {
+      window.arcadeReel.addCardChatMessage(
+        e.data.cardIndex,
+        `⚠️ Runtime issue: "${e.data.error}". Click [🛠️ REFINE] to patch or [⏪ REVERT] to restore original.`,
+        'ai'
+      );
+    }
+  }
+});
 
 window.homeCardClick = function(prompt) {
   window.navigateTo('search');
@@ -439,12 +463,9 @@ function renderCustomIframe(code) {
   if (iframe) iframe.style.display = 'block';
 
   const cleanCode = sanitizeCodeForIframe(code);
-
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
   const scriptTagStart = '<script>';
   const scriptTagEnd = '<\/script>';
-  doc.write(`
+  const fullHtml = `
     <!DOCTYPE html>
     <html>
     <head>
@@ -453,13 +474,17 @@ function renderCustomIframe(code) {
         body { margin: 0; padding: 0; background: #0f172a; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; }
         canvas { background: #1e293b; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); cursor: pointer; }
       </style>
-    </head>
-    <body>
-      <canvas id="gameCanvas" width="800" height="600"></canvas>
       ${scriptTagStart}
-        window.onerror = function(msg, url, line) {
-          window.parent.postMessage({ type: 'GAME_ERROR', error: msg + ' (line ' + line + ')' }, '*');
+        // Pre-Registered Global Error Trappers (Catches Syntax & Parse Errors in second script)
+        window.onerror = function(msg, url, line, col, err) {
+          var errMsg = msg || (err && err.message) || 'Syntax or Runtime Error';
+          window.parent.postMessage({ type: 'GAME_ERROR', error: errMsg + (line ? ' (line ' + line + ')' : '') }, '*');
+          return false;
         };
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled Error';
+          window.parent.postMessage({ type: 'GAME_ERROR', error: reason }, '*');
+        });
 
         // ZzFX Micro Sound Synthesizer (MIT License - Frank Force)
         window.zzfxX = window.zzfxX || null;
@@ -473,17 +498,17 @@ function renderCustomIframe(code) {
           return window.zzfxX;
         }
 
-        // Global User Interaction Unlock
-        ['click', 'mousedown', 'keydown', 'touchstart'].forEach(evt => {
-          window.addEventListener(evt, () => _getZzfxCtx(), { once: true, passive: true });
+        ['click', 'mousedown', 'keydown', 'touchstart'].forEach(function(evt) {
+          window.addEventListener(evt, function() { _getZzfxCtx(); }, { once: true, passive: true });
         });
 
-        window.zzfx = (...t) => {
-          const ctx = _getZzfxCtx();
+        window.zzfx = function() {
+          var t = Array.prototype.slice.call(arguments);
+          var ctx = _getZzfxCtx();
           if (!ctx) return null;
-          const p = zzfxG(...t);
-          const src = ctx.createBufferSource();
-          const buf = ctx.createBuffer(1, p.length, zzfxR);
+          var p = zzfxG.apply(null, t);
+          var src = ctx.createBufferSource();
+          var buf = ctx.createBuffer(1, p.length, zzfxR);
           buf.getChannelData(0).set(p);
           src.buffer = buf;
           src.connect(ctx.destination);
@@ -491,10 +516,11 @@ function renderCustomIframe(code) {
           return src;
         };
 
-        function zzfxG(q=1,k=.05,c=220,e=0,t=0,u=.1,j=0,v=1,m=0,r=0,s=0,h=0,w=0,x=0,y=0,z=0,A=0,l=1,B=0,C=0) {
-          let b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
+        function zzfxG(q,k,c,e,t,u,j,v,m,r,s,h,w,x,y,z,A,l,B,C) {
+          q=q===undefined?1:q; k=k===undefined?.05:k; c=c===undefined?220:c; e=e===undefined?0:e; t=t===undefined?0:t; u=u===undefined?.1:u; j=j===undefined?0:j; v=v===undefined?1:v; m=m===undefined?0:m; r=r===undefined?0:r; s=s===undefined?0:s; h=h===undefined?0:h; w=w===undefined?0:w; x=x===undefined?0:x; y=y===undefined?0:y; z=z===undefined?0:z; A=A===undefined?0:A; l=l===undefined?1:l; B=B===undefined?0:B; C=C===undefined?0:C;
+          var b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
           t=t*zzfxR|0;u=u*zzfxR|0;j=j*zzfxR|0;A=A*zzfxR|0;B=B*zzfxR|0;m*=(500*b)/zzfxR**3;x*=b/zzfxR;s*=b/zzfxR;h=h*zzfxR|0;w=w*zzfxR|0;z=z*zzfxR|0;C*=b/zzfxR;
-          for(let K=t+u+j+A+B|0,L=0;L<K;++L){
+          for(var K=t+u+j+A+B|0,L=0;L<K;++L){
             ++N>=h&&(N=0,d=2*Math.random()-1);d&&(G=d>0?1:-1);
             p[L]=(L<t?L/t:L<t+u?1-(L-t)/u*(1-y):L<t+u+j?y:L<K-B?(K-B-L)/A*y:0)*(L<t+u+j+A?Math.sin(F):1)*(L<t+u?(1-k)+k*Math.cos(L/J*b):1)*Math.sin(a);
             a+=D+=v+=m;F+=x;g+=s;P+=C;q&&(p[L]=p[L]*q);
@@ -502,7 +528,7 @@ function renderCustomIframe(code) {
           return p;
         }
 
-        const ZZFX_PRESETS = {
+        var ZZFX_PRESETS = {
           laser: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
           shoot: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
           bullet: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
@@ -522,30 +548,46 @@ function renderCustomIframe(code) {
             if (window.parent && window.parent !== window) {
               window.parent.postMessage({ type: 'PLAY_SOUND', sfx: type }, '*');
             }
-            const key = (type || 'click').toLowerCase();
-            const sound = ZZFX_PRESETS[key] || ZZFX_PRESETS.click;
-            window.zzfx(...sound);
+            var key = (type || 'click').toLowerCase();
+            var sound = ZZFX_PRESETS[key] || ZZFX_PRESETS.click;
+            window.zzfx.apply(null, sound);
           } catch(e) {}
         };
 
-        try {
-          ${cleanCode}
-        } catch(err) {
-          console.error("Custom Game Code Execution Error:", err);
-          window.parent.postMessage({ type: 'GAME_ERROR', error: err.message }, '*');
-        }
+        // Render loop heartbeat watchdog
+        window._renderedFrames = 0;
+        var _origRAF = window.requestAnimationFrame;
+        window.requestAnimationFrame = function(cb) {
+          window._renderedFrames++;
+          return _origRAF(cb);
+        };
+        setTimeout(function() {
+          if (window._renderedFrames === 0) {
+            window.parent.postMessage({ type: 'GAME_ERROR', error: 'Game loop failed to render frames' }, '*');
+          }
+        }, 1500);
+      ${scriptTagEnd}
+    </head>
+    <body>
+      <canvas id="gameCanvas" width="800" height="600"></canvas>
+      ${scriptTagStart}
+${cleanCode}
       ${scriptTagEnd}
     </body>
     </html>
-  `);
-  doc.close();
+  `;
+
+  // Use srcdoc for clean isolation and reliable instant reloads
+  iframe.srcdoc = fullHtml;
 }
 
 window.addEventListener('message', (e) => {
   if (!e.data) return;
   if (e.data.type === 'GAME_ERROR') {
     console.warn('[IframeGameError]', e.data.error);
-    addChatMessage(`⚠️ Runtime Error: ${e.data.error}`, 'ai');
+    window._app.lastBrokenCode = window._app.lastCustomCode;
+    window._app.lastErrorMessage = e.data.error;
+    addChatMessage(`⚠️ Runtime Issue: "${e.data.error}" — Click [🛠️ AUTO-FIX] or [⏪ REVERT] in the HUD above!`, 'ai');
   } else if (e.data.type === 'PLAY_SOUND') {
     soundManager.init();
     const sfx = (e.data.sfx || 'coin').toLowerCase();
@@ -590,7 +632,12 @@ window.sendCustomTweak = async function() {
   if (input) input.value = '';
   addChatMessage(`🛠️ Tweak: "${tweakText}"`, 'user');
 
-  const basePrompt = window._app.lastCustomPrompt || 'Farmer Life Simulator';
+  // Save current working code snapshot before applying tweak
+  if (window._app.lastCustomCode) {
+    window._app.lastWorkingCode = window._app.lastCustomCode;
+  }
+
+  const basePrompt = window._app.lastCustomPrompt || 'Custom Canvas Game';
   const prevCode = window._app.lastCustomCode || '';
 
   window.showLoading('Updating Code...', `🧠 Ollama LLM refactoring game with: "${tweakText.slice(0, 30)}..."`);
@@ -612,10 +659,74 @@ window.sendCustomTweak = async function() {
       window._app.lastCustomCode = data.code;
       renderCustomIframe(data.code);
       addChatMessage(`✅ Applied tweak: "${tweakText}"`, 'ai');
+    } else {
+      addChatMessage(`⚠️ Refinement issue. You can revert or try a different prompt.`, 'ai');
     }
   } catch (err) {
     window.hideLoading();
-    addChatMessage(`⚠️ Failed to apply tweak. Re-trying...`, 'ai');
+    addChatMessage(`⚠️ Network error while generating tweak.`, 'ai');
+  }
+};
+
+/**
+ * 1-Click Self-Healing AI Auto-Repair:
+ * Sends the broken runtime code and error stack to the LLM to patch the bug live.
+ */
+window.autoRepairCurrentGame = async function() {
+  const brokenCode = window._app.lastBrokenCode || window._app.lastCustomCode;
+  const errorDetails = window._app.lastErrorMessage || 'Runtime error or blank canvas';
+  const userPrompt = window._app.lastCustomPrompt || 'Custom Canvas Game';
+
+  if (!brokenCode) {
+    addChatMessage(`⚠️ No custom game code available to repair.`, 'ai');
+    return;
+  }
+
+  window.showLoading('Self-Healing in Progress...', `🧠 Ollama AI debugging and patching: "${errorDetails.slice(0, 40)}..."`);
+
+  try {
+    const res = await fetch(`${API_BASE}/auto-repair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brokenCode: brokenCode,
+        errorDetails: errorDetails,
+        userPrompt: userPrompt
+      })
+    });
+    const data = await res.json();
+    window.hideLoading();
+
+    if (data.success && data.code) {
+      window._app.lastCustomCode = data.code;
+      window._app.lastWorkingCode = data.code;
+      renderCustomIframe(data.code);
+
+      // Trigger victory fanfare & confetti
+      if (window.soundManager) window.soundManager.playWin();
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 } });
+
+      addChatMessage(`✨ 🛠️ AI Self-Healing Complete: Bug successfully patched!`, 'ai');
+    } else {
+      addChatMessage(`⚠️ AI Debugger could not fully patch this error automatically. You can click [⏪ REVERT] to restore your last working game, or submit a new refinement tweak.`, 'ai');
+    }
+  } catch (err) {
+    window.hideLoading();
+    addChatMessage(`⚠️ Network error during auto-repair. You can click [⏪ REVERT] to restore your last working game.`, 'ai');
+  }
+};
+
+/**
+ * Revert to previous working game version
+ */
+window.revertToLastWorkingGame = function() {
+  if (window._app.lastWorkingCode) {
+    window._app.lastCustomCode = window._app.lastWorkingCode;
+    renderCustomIframe(window._app.lastWorkingCode);
+    if (window.soundManager) window.soundManager.playCoin();
+    addChatMessage(`⏪ Restored previous working game version!`, 'ai');
+  } else {
+    addChatMessage(`⚠️ No previous version saved yet. Click START GAME to generate fresh.`, 'ai');
   }
 };
 
@@ -829,20 +940,20 @@ function renderHistoryList(history) {
   const listEl = document.getElementById('history-list');
   if (!listEl) return;
   if (!history || !history.length) {
-    listEl.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.3);padding:24px;text-align:center"><div style="font-size:32px;margin-bottom:8px">🕹️</div>No history yet. Search for a game!</div>';
+    listEl.innerHTML = '<div style="font-size:12px;color:#64748b;padding:32px 16px;text-align:center;font-weight:600"><div style="font-size:36px;margin-bottom:10px">🕹️</div><div style="font-family:var(--pixel-font-title);font-size:11px;color:var(--pixel-blue);margin-bottom:4px">NO HISTORY YET</div>Search or generate a game to record prompts!</div>';
     return;
   }
   listEl.innerHTML = history.map(h => {
     const safePrompt = (h.prompt || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     return `
       <div onclick="window.replayHistory('${safePrompt}')"
-        style="padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.03);margin-bottom:8px;cursor:pointer;transition:all 0.2s"
-        onmouseover="this.style.background='rgba(255,255,255,0.07)'"
-        onmouseout="this.style.background='rgba(255,255,255,0.03)'">
-        <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.75);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${h.prompt}"</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:10px;color:rgba(255,255,255,0.3)">${new Date(h.timestamp).toLocaleTimeString()}</span>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;${h.isGeneratable ? 'background:rgba(52,211,153,0.12);color:#34d399' : 'background:rgba(251,191,36,0.12);color:#fbbf24'}">${h.isGeneratable ? '⚡ Gen' : '📚 Rec'}</span>
+        style="padding:12px 14px;border-radius:12px;border:2px solid #e2e8f0;background:#f8fafc;margin-bottom:10px;cursor:pointer;box-shadow:0 3px 0 #cbd5e1;transition:all 0.15s"
+        onmouseover="this.style.background='#dcfce7';this.style.borderColor='#86efac';this.style.boxShadow='0 4px 0 #86efac';this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.background='#f8fafc';this.style.borderColor='#e2e8f0';this.style.boxShadow='0 3px 0 #cbd5e1';this.style.transform='none'">
+        <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4">"${h.prompt}"</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;font-weight:600;color:#64748b">🕒 ${new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <span style="font-size:9px;font-weight:700;padding:3px 8px;border-radius:6px;${h.isGeneratable ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac' : 'background:#fef3c7;color:#b45309;border:1px solid #fcd34d'}">${h.isGeneratable ? '⚡ GENERATED' : '📚 SEARCH'}</span>
         </div>
       </div>`;
   }).join('');
@@ -930,15 +1041,32 @@ window.exportCurrentGame = function() {
       min-height: 100vh;
       width: 100vw;
       overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #game-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      padding: 10px;
     }
     #gameCanvas {
       background: #0f172a;
       border: 4px solid #407a1e;
       border-radius: 16px;
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(101, 163, 13, 0.3);
-      max-width: 95vw;
-      max-height: 85vh;
+      width: 100% !important;
+      height: auto !important;
+      max-width: 800px;
+      max-height: 80vh;
+      aspect-ratio: 4 / 3;
+      object-fit: contain;
       cursor: pointer;
+      touch-action: none;
     }
     .game-hud {
       margin-top: 14px;
@@ -967,13 +1095,48 @@ window.exportCurrentGame = function() {
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <div class="game-hud">
-    <div>🎮 <strong>${gameTitle}</strong></div>
-    <div class="badge">STANDALONE EDITION</div>
-    <div>⚔️ Built with <strong>Venator Arcade</strong></div>
+  <div id="game-wrapper">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="game-hud">
+      <div>🎮 <strong>${gameTitle}</strong></div>
+      <div class="badge">STANDALONE EDITION</div>
+      <div>⚔️ Built with <strong>Venator Arcade</strong></div>
+    </div>
   </div>
   <script>
+    // Virtual Coordinate Scaler Hook:
+    function _scaleEventCoords(e, canvas) {
+      if (!canvas) return;
+      var rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      var touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+      if (touch && typeof touch.clientX === 'number') {
+        var scaleX = canvas.width / rect.width;
+        var scaleY = canvas.height / rect.height;
+        var sx = (touch.clientX - rect.left) * scaleX;
+        var sy = (touch.clientY - rect.top) * scaleY;
+        try {
+          Object.defineProperty(e, 'offsetX', { get: function() { return sx; }, configurable: true });
+          Object.defineProperty(e, 'offsetY', { get: function() { return sy; }, configurable: true });
+          Object.defineProperty(e, 'canvasX', { get: function() { return sx; }, configurable: true });
+          Object.defineProperty(e, 'canvasY', { get: function() { return sy; }, configurable: true });
+        } catch(err) {}
+      }
+    }
+
+    var _origAddEventListener = HTMLCanvasElement.prototype.addEventListener;
+    HTMLCanvasElement.prototype.addEventListener = function(type, listener, options) {
+      var canvas = this;
+      if (['mousedown', 'mouseup', 'mousemove', 'click', 'touchstart', 'touchmove', 'touchend'].indexOf(type) !== -1) {
+        var wrappedListener = function(e) {
+          _scaleEventCoords(e, canvas);
+          listener.call(this, e);
+        };
+        return _origAddEventListener.call(this, type, wrappedListener, options);
+      }
+      return _origAddEventListener.call(this, type, listener, options);
+    };
+
     // ZzFX Micro Sound Synthesizer (MIT License - Frank Force)
     let zzfxX = null;
     const zzfxR = 44100;
