@@ -29,15 +29,21 @@ export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPrefe
   }
   recordCacheMiss();
 
-  // Build token set
+  // Build token set & entity constraints
   const rawTokens = promptText.split(/[\s,]+/).filter(t => t.length > 2);
   const mechanicTokens = Array.isArray(parsedAttrs.mechanics)
     ? parsedAttrs.mechanics.map(m => m.toLowerCase()) : [];
   const genreToken = (parsedAttrs.genre || '').toLowerCase();
   const moodToken  = (parsedAttrs.moodTheme || '').toLowerCase();
   const artToken   = (parsedAttrs.artStyle  || '').toLowerCase();
-  const allTokens  = [...new Set([...rawTokens, ...mechanicTokens, genreToken, moodToken, artToken].filter(Boolean))];
-  const STOP = new Set(['the','and','with','that','for','like','some','have','this','can','are','game','games','play','want','need','where']);
+  
+  // Extract primary entities and hard platform constraints
+  const entities = Array.isArray(parsedAttrs.entities)
+    ? parsedAttrs.entities.map(e => e.toLowerCase()) : [];
+  const platformConstraint = (parsedAttrs.hardConstraints?.platform || parsedAttrs.platform || '').toLowerCase();
+
+  const allTokens  = [...new Set([...rawTokens, ...mechanicTokens, genreToken, moodToken, artToken, ...entities].filter(Boolean))];
+  const STOP = new Set(['the','and','with','that','for','like','some','have','this','can','are','game','games','play','want','need','where','which']);
   const searchTokens = allTokens.filter(t => !STOP.has(t) && t.length > 2);
 
   // ----- Score local DB games -----
@@ -48,64 +54,98 @@ export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPrefe
     const descLow   = (game.description || '').toLowerCase();
     const titleLow  = (game.title || '').toLowerCase();
     const tagsLow   = (game.tags || []).map(t => t.toLowerCase());
+    const platformLow = Array.isArray(game.platform)
+      ? game.platform.map(p => p.toLowerCase()).join(' ')
+      : (game.platform || '').toLowerCase();
 
-    if (genreToken && genreLow.includes(genreToken)) { score += 40; matchedTags.add(genreToken); }
+    let hasEntityMatch = false;
+
+    // 1. Literal Entity Match (Highest Priority)
+    for (const ent of entities) {
+      if (titleLow.includes(ent)) {
+        score += 150;
+        hasEntityMatch = true;
+        matchedTags.add(ent);
+      } else if (tagsLow.some(t => t.includes(ent)) || descLow.includes(ent)) {
+        score += 90;
+        hasEntityMatch = true;
+        matchedTags.add(ent);
+      }
+    }
+
+    // 2. Hard Platform Constraint Match
+    if (platformConstraint) {
+      const isN64 = platformConstraint.includes('n64') || platformConstraint.includes('nintendo 64');
+      if (isN64 && (platformLow.includes('n64') || platformLow.includes('nintendo 64'))) {
+        score += 80;
+        matchedTags.add('n64');
+      } else if (platformLow.includes(platformConstraint)) {
+        score += 60;
+        matchedTags.add(platformConstraint);
+      }
+    }
+
+    // 3. Taxonomy matches
+    if (genreToken && genreLow.includes(genreToken)) { score += 30; matchedTags.add(genreToken); }
 
     for (const token of searchTokens) {
-      if (titleLow.includes(token))  { score += 30; matchedTags.add(token); }
-      if (tagsLow.some(t => t.includes(token))) { score += 20; matchedTags.add(token); }
-      if (genreLow.includes(token))  { score += 15; matchedTags.add(token); }
-      if (descLow.includes(token))   { score += 8;  matchedTags.add(token); }
+      if (titleLow.includes(token))  { score += 25; matchedTags.add(token); }
+      if (tagsLow.some(t => t.includes(token))) { score += 15; matchedTags.add(token); }
+      if (genreLow.includes(token))  { score += 10; matchedTags.add(token); }
+      if (descLow.includes(token))   { score += 6;  matchedTags.add(token); }
     }
     for (const m of mechanicTokens) {
       const allText = `${genreLow} ${descLow} ${titleLow} ${tagsLow.join(' ')}`;
-      if (allText.includes(m)) { score += 12; matchedTags.add(m); }
+      if (allText.includes(m)) { score += 10; matchedTags.add(m); }
     }
-    if (moodToken && `${genreLow} ${descLow}`.includes(moodToken)) { score += 10; matchedTags.add(moodToken); }
-    if (artToken  && `${genreLow} ${descLow}`.includes(artToken))  { score += 8;  matchedTags.add(artToken);  }
+    if (moodToken && `${genreLow} ${descLow}`.includes(moodToken)) { score += 8; matchedTags.add(moodToken); }
+    if (artToken  && `${genreLow} ${descLow}`.includes(artToken))  { score += 6; matchedTags.add(artToken);  }
     if (Array.isArray(userPreferences.favoriteGenres)) {
-      if (userPreferences.favoriteGenres.some(fg => genreLow.includes(fg.toLowerCase()))) score += 10;
+      if (userPreferences.favoriteGenres.some(fg => genreLow.includes(fg.toLowerCase()))) score += 8;
     }
 
-    const matchPercentage = score === 0 ? 0 : Math.min(97, Math.round(42 + (score / 120) * 55));
-    return { ...game, score, matchPercentage, matchedTagsArray: Array.from(matchedTags) };
+    const matchPercentage = score === 0 ? 0 : Math.min(98, Math.round(42 + (score / 140) * 55));
+    return { ...game, score, matchPercentage, matchedTagsArray: Array.from(matchedTags), hasEntityMatch };
   }
 
   let localScored = GAME_DATABASE.map(scoreGame);
   localScored.sort((a, b) => b.score - a.score || b.rating - a.rating);
 
-  const MIN_GOOD_SCORE = 15;
+  const MIN_GOOD_SCORE = 25;
   const goodLocal = localScored.filter(g => g.score >= MIN_GOOD_SCORE);
   const bestLocalScore = localScored[0]?.score ?? 0;
 
+  // Entity Guard: If user prompt specified entities, check if local DB has actual entity matches
+  const hasLocalEntityMatch = entities.length === 0 || goodLocal.some(g => g.hasEntityMatch);
+
   let allMatchedResults = [];
 
-  if (goodLocal.length >= 4) {
-    // Local DB has plenty of matches
-    console.log(`[SemanticSearch] Found ${goodLocal.length} good local matches in DB.`);
+  if (goodLocal.length >= 4 && hasLocalEntityMatch) {
+    // Local DB has plenty of high-quality entity-matching games
+    console.log(`[SemanticSearch] Found ${goodLocal.length} good local matches in DB with entity coverage.`);
     allMatchedResults = goodLocal;
   } else {
-    // --- Primary fallback: Ask LLM to recommend real games ---
-    console.log(`[SemanticSearch] Local matches thin (best=${bestLocalScore}), asking LLM for recommendations...`);
+    // --- Primary fallback: Ask LLM to recommend real games matching the specific entity/platform ---
+    console.log(`[SemanticSearch] Local entity matches thin (best=${bestLocalScore}, hasEntityMatch=${hasLocalEntityMatch}), asking LLM for exact real-world recommendations...`);
     const llmRecs = await generateLLMRecommendations(userPrompt, parsedAttrs);
     
     if (llmRecs.length >= 3) {
-      console.log(`[SemanticSearch] LLM returned ${llmRecs.length} recommendations.`);
+      console.log(`[SemanticSearch] LLM returned ${llmRecs.length} targeted recommendations.`);
       const seen = new Set(llmRecs.map(g => g.title.toLowerCase()));
       const remainingLocal = goodLocal.filter(g => !seen.has(g.title.toLowerCase()));
       allMatchedResults = [...llmRecs, ...remainingLocal, ...localScored.filter(g => !seen.has(g.title.toLowerCase()))];
     } else {
       // --- Secondary fallback: RAWG API ---
-      console.log(`[SemanticSearch] LLM failed, trying RAWG...`);
-      const rawgGames = await fetchRawgGames(userPrompt, 12);
+      console.log(`[SemanticSearch] LLM fallback thin, querying RAWG API with prompt...`);
+      const rawgQuery = entities.length > 0 ? `${entities.join(' ')} ${platformConstraint || ''}`.trim() : userPrompt;
+      const rawgGames = await fetchRawgGames(rawgQuery || userPrompt, 12);
       
       if (rawgGames.length >= 2) {
-        const rawgScored = rawgGames.map(g => ({ ...g, score: 60, matchPercentage: 78, matchedTagsArray: searchTokens.slice(0, 3) }));
+        const rawgScored = rawgGames.map(g => ({ ...g, score: 75, matchPercentage: 88, matchedTagsArray: [...entities, platformConstraint].filter(Boolean) }));
         const seen = new Set(rawgScored.map(g => g.title.toLowerCase()));
         const remainingLocal = goodLocal.filter(g => !seen.has(g.title.toLowerCase()));
         allMatchedResults = [...rawgScored, ...remainingLocal, ...localScored.filter(g => !seen.has(g.title.toLowerCase()))];
       } else {
-        // --- Tertiary fallback: DuckDuckGo web search ---
         console.log(`[SemanticSearch] RAWG empty, trying web search...`);
         const webResults = await searchWebGamesFallback(promptText + ' video game');
         const webScored = webResults.map(g => ({ ...g, score: 50, matchPercentage: 70, matchedTagsArray: searchTokens.slice(0, 2) }));

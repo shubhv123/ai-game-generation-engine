@@ -37,20 +37,28 @@ export async function parsePromptAttributes(userPrompt) {
   const systemMessage = `You are an expert game developer and game taxonomy parser.
 Parse the user's natural language game request into a valid JSON object with the following fields:
 {
-  "genre": "Shooter | Puzzle | Runner | Platformer | Racing | Strategy | RPG | Fighting | Arcade",
+  "entities": ["list", "of", "literal", "proper", "nouns", "subjects", "character", "animals", "or", "specific", "items", "e.g.", "chameleon"],
+  "hardConstraints": {
+    "platform": "N64 | Nintendo 64 | PS1 | SNES | PC | Switch | Xbox | null",
+    "year": "e.g. 1997 or 90s or null",
+    "franchise": "specific game franchise if mentioned or null"
+  },
+  "genre": "Shooter | Puzzle | Runner | Platformer | Racing | Strategy | RPG | Fighting | Arcade | Adventure",
   "dimension": "2D | 3D",
-  "platform": "PC | Console | Mobile | Web | Cross-Platform",
+  "platform": "PC | Console | Mobile | Web | Cross-Platform | Nintendo 64 | PlayStation",
   "multiplayer": true or false,
   "mechanics": ["list", "of", "core", "mechanics"],
   "difficulty": "Easy | Medium | Hard | Increasing",
   "artStyle": "Pixel | Cyberpunk | Minimalist | Low-Poly | Retro Neon | Fantasy | Realistic",
-  "moodTheme": "Action | Relaxing | Sci-Fi | Dark | Futuristic | Casual",
+  "moodTheme": "Action | Relaxing | Sci-Fi | Dark | Futuristic | Casual | Playful",
   "archetype": "2D_SHOOTER | 2D_BRICK | 2D_RUNNER | 2D_SNAKE | 2D_TANK | 2D_JUMPER | 2D_PACMAN | CHESS | 3D_RUNNER | 3D_SHOOTER | 3D_MAZE | REC_ONLY",
   "isGeneratable": true or false,
   "scopeExplanation": "Short explanation of whether this is generatable as a playable web prototype or recommendation-only"
 }
 
 Rules:
+- CRITICAL: Always capture specific nouns/characters (e.g. "chameleon", "subway", "ninja", "cat", "vampire", "tank") into the "entities" array!
+- If the user specifies an explicit platform (e.g. "N64", "Nintendo 64", "PS2", "Game Boy"), set hardConstraints.platform!
 - Respond ONLY with pure JSON. Do not include markdown code block syntax if possible, or format strictly as JSON.
 - If request matches 2D/3D arcade/puzzle/runner/shooter/chess, set archetype appropriately and isGeneratable = true.
 - If request is a complex AAA game, open-world RPG, or massive multiplayer (e.g. GTA, Witcher 3, Cyberpunk 2077), set archetype = "REC_ONLY" and isGeneratable = false.`;
@@ -74,6 +82,8 @@ Rules:
       const parsed = JSON.parse(cleaned);
 
       // Sanitize fields
+      parsed.entities = Array.isArray(parsed.entities) ? parsed.entities.filter(Boolean) : [];
+      parsed.hardConstraints = parsed.hardConstraints || {};
       parsed.isGeneratable = Boolean(parsed.isGeneratable && parsed.archetype !== 'REC_ONLY');
       parsed.promptText = promptText;
       attributeCache.set(cacheKey, parsed);
@@ -95,9 +105,23 @@ Rules:
 export function getFallbackAttributes(text) {
   const t = text.toLowerCase();
   
+  // Extract explicit platform constraints
+  let platformConstraint = null;
+  if (t.includes('n64') || t.includes('nintendo 64')) platformConstraint = 'Nintendo 64';
+  else if (t.includes('ps1') || t.includes('playstation 1') || t.includes('psx')) platformConstraint = 'PlayStation';
+  else if (t.includes('ps2') || t.includes('playstation 2')) platformConstraint = 'PlayStation 2';
+  else if (t.includes('snes') || t.includes('super nintendo')) platformConstraint = 'SNES';
+  else if (t.includes('gameboy') || t.includes('game boy') || t.includes('gba')) platformConstraint = 'Game Boy';
+  else if (t.includes('switch')) platformConstraint = 'Nintendo Switch';
+
+  // Extract entity keywords (filter common stopwords)
+  const STOPWORDS = new Set(['a','an','the','game','where','you','play','as','on','in','with','for','of','and','to','is','like']);
+  const words = t.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOPWORDS.has(w));
+  const entities = words.filter(w => !['n64', 'nintendo', 'playstation', 'game', 'play', '2d', '3d'].includes(w));
+
   let genre = 'Arcade';
   let dimension = t.includes('2d') ? '2D' : (t.includes('3d') ? '3D' : '2D');
-  let platform = t.includes('mobile') ? 'Mobile' : (t.includes('console') ? 'Console' : 'PC / Web');
+  let platform = platformConstraint || (t.includes('mobile') ? 'Mobile' : (t.includes('console') ? 'Console' : 'PC / Web'));
   let multiplayer = t.includes('multiplayer') || t.includes('coop') || t.includes('pvp') || t.includes('multi-player');
   let difficulty = t.includes('hard') ? 'Hard' : (t.includes('easy') ? 'Easy' : (t.includes('increasing') || t.includes('escalat') ? 'Increasing' : 'Medium'));
   let artStyle = t.includes('cyber') ? 'Retro Neon' : (t.includes('pixel') ? 'Pixel' : (t.includes('minimal') ? 'Minimalist' : 'Cyberpunk'));
@@ -174,6 +198,12 @@ export function getFallbackAttributes(text) {
     : `High complexity AAA / Open World request. Recommending existing curated game titles.`;
 
   return {
+    entities,
+    hardConstraints: {
+      platform: platformConstraint,
+      year: null,
+      franchise: null
+    },
     genre,
     dimension,
     platform,

@@ -41,9 +41,19 @@ Rules:
   - Adventure/exploration: photo-1518791841217-8f162f1912da
 - Respond with ONLY the JSON array, no markdown, no explanation`;
 
+  const entities = Array.isArray(parsedAttributes?.entities) ? parsedAttributes.entities : [];
+  const platformConstraint = parsedAttributes?.hardConstraints?.platform || parsedAttributes?.platform;
+  
+  let constraintPrompt = `User wants: "${userPrompt}"`;
+  if (entities.length > 0 || platformConstraint) {
+    constraintPrompt += `\nCRITICAL CONSTRAINTS TO PRIORITIZE:`;
+    if (entities.length > 0) constraintPrompt += `\n- Specific Subjects/Character/Entities: ${entities.join(', ')} (You MUST recommend games that literally feature this character/animal/theme, e.g. Chameleon Twist for chameleon on N64)`;
+    if (platformConstraint) constraintPrompt += `\n- Specific Platform/Console: ${platformConstraint}`;
+  }
+
   const messages = [
     { role: 'system', content: systemMessage },
-    { role: 'user', content: `User wants: "${userPrompt}"` }
+    { role: 'user', content: constraintPrompt }
   ];
 
   try {
