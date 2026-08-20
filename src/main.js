@@ -352,33 +352,29 @@ function updateArchetypeGrid(dim) {
   if (!grid) return;
   if (dim === '3D') {
     grid.innerHTML = `
-      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2; background: linear-gradient(135deg, rgba(147,51,234,0.2) 0%, rgba(79,70,229,0.2) 100%); border-color: rgba(168,85,247,0.4); color: #e9d5ff">
-        <span>✨</span>
-        <strong style="font-size:12px;color:#fff">Custom AI LLM Game</strong>
-        <span style="font-size:9px;color:rgba(255,255,255,0.5)">Farmer Sim, Custom Rules, Full LLM Synthesis</span>
+      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2">
+        <strong style="font-size:10px">CUSTOM AI GAME</strong>
+        <span style="font-size:8px;opacity:0.8">Farmer Sim, Full LLM Synthesis</span>
       </button>
-      <button class="archetype-btn" data-key="RUNNER" onclick="selectArchetype(this)"><span>🏃</span>Highway Runner</button>
-      <button class="archetype-btn" data-key="SHOOTER" onclick="selectArchetype(this)"><span>🔫</span>3D Shooter</button>
-      <button class="archetype-btn" data-key="CHESS" onclick="selectArchetype(this)"><span>♟️</span>Chess 3D</button>
-      <button class="archetype-btn" data-key="MAZE" onclick="selectArchetype(this)"><span>🏯</span>Maze</button>
-      <button class="archetype-btn" data-key="PLATFORMER" onclick="selectArchetype(this)"><span>🪄</span>Platformer</button>
-      <button class="archetype-btn" data-key="RACING" onclick="selectArchetype(this)"><span>🏎️</span>Kart Racer</button>`;
+      <button class="archetype-btn" data-key="RUNNER" onclick="selectArchetype(this)">Highway Runner</button>
+      <button class="archetype-btn" data-key="SHOOTER" onclick="selectArchetype(this)">3D Shooter</button>
+      <button class="archetype-btn" data-key="CHESS" onclick="selectArchetype(this)">Chess 3D</button>
+      <button class="archetype-btn" data-key="MAZE" onclick="selectArchetype(this)">Maze</button>
+      <button class="archetype-btn" data-key="PLATFORMER" onclick="selectArchetype(this)">Platformer</button>
+      <button class="archetype-btn" data-key="RACING" onclick="selectArchetype(this)">Kart Racer</button>`;
     window._app.selectedArchetype = 'CUSTOM_AI';
   } else {
     grid.innerHTML = `
-      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2; background: linear-gradient(135deg, rgba(147,51,234,0.2) 0%, rgba(79,70,229,0.2) 100%); border-color: rgba(168,85,247,0.4); color: #e9d5ff">
-        <span>✨</span>
-        <strong style="font-size:12px;color:#fff">Custom AI LLM Game</strong>
-        <span style="font-size:9px;color:rgba(255,255,255,0.5)">Farmer Sim, Custom Rules, Full LLM Synthesis</span>
+      <button class="archetype-btn selected" data-key="CUSTOM_AI" onclick="selectArchetype(this)" style="grid-column: span 2">
+        <strong style="font-size:10px">CUSTOM AI GAME</strong>
+        <span style="font-size:8px;opacity:0.8">Farmer Sim, Full LLM Synthesis</span>
       </button>
-      <button class="archetype-btn" data-key="2D_SHOOTER" onclick="selectArchetype(this)"><span>🚀</span>Space Shooter</button>
-      <button class="archetype-btn" data-key="2D_BRICK" onclick="selectArchetype(this)"><span>🟥</span>Brick Breaker</button>
-      <button class="archetype-btn" data-key="2D_SNAKE" onclick="selectArchetype(this)"><span>🐍</span>Neon Snake</button>
-      <button class="archetype-btn" data-key="2D_PACMAN" onclick="selectArchetype(this)"><span>🟡</span>Pacman</button>
-      <button class="archetype-btn" data-key="2D_TANK" onclick="selectArchetype(this)"><span>🪖</span>Tank Combat</button>
-      <button class="archetype-btn" data-key="2D_JUMPER" onclick="selectArchetype(this)"><span>☁️</span>Doodle Jumper</button>
-      <button class="archetype-btn" data-key="2D_RUNNER" onclick="selectArchetype(this)"><span>🏃</span>2D Runner</button>
-      <button class="archetype-btn" data-key="2D_CHESS" onclick="selectArchetype(this)"><span>♟️</span>Chess 2D</button>`;
+      <button class="archetype-btn" data-key="2D_SHOOTER" onclick="selectArchetype(this)">Space Shooter</button>
+      <button class="archetype-btn" data-key="2D_BRICK" onclick="selectArchetype(this)">Brick Breaker</button>
+      <button class="archetype-btn" data-key="2D_SNAKE" onclick="selectArchetype(this)">Neon Snake</button>
+      <button class="archetype-btn" data-key="2D_PACMAN" onclick="selectArchetype(this)">Pacman</button>
+      <button class="archetype-btn" data-key="2D_TANK" onclick="selectArchetype(this)">Tank Combat</button>
+      <button class="archetype-btn" data-key="2D_RUNNER" onclick="selectArchetype(this)">2D Runner</button>`;
     window._app.selectedArchetype = 'CUSTOM_AI';
   }
 }
