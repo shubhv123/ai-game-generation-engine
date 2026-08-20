@@ -3,20 +3,31 @@ import { fetchRawgGames } from './rawgService.js';
 import { searchWebGamesFallback } from './webSearchService.js';
 import { generateRecommendationRationale } from '../../ai/rationaleGenerator.js';
 import { generateLLMRecommendations } from '../../ai/llmRecommender.js';
+import { searchCache, rationaleCache, recordCacheHit, recordCacheMiss } from './cacheService.js';
 
 /**
- * Semantic search & ranking over game catalog with Pagination and On-Demand AI Rationale Generation.
+ * Semantic search & ranking over game catalog with Pagination and In-Memory LRU Caching.
  * 
  * Strategy:
- *  1. Search & score entire catalog/fallbacks.
- *  2. Filter and rank all relevant matches.
- *  3. Slice requested page (e.g. page 1 = items 0-5, page 2 = items 6-11).
- *  4. Generate AI rationales ONLY for the 6 games on the requested page to avoid LLM overload.
+ *  1. Check `searchCache` for exact query:page:limit match -> Instant < 1ms response.
+ *  2. If miss, search & score entire catalog/fallbacks.
+ *  3. Slice requested page.
+ *  4. Check `rationaleCache` per game -> Avoid redundant LLM calls.
+ *  5. Cache completed payload into `searchCache`.
  */
 export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPreferences = {}, page = 1, limit = 6) {
   const promptText = (userPrompt || '').toLowerCase().trim();
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const pageSize = Math.max(1, parseInt(limit, 10) || 6);
+
+  // 1. Check Page-Level In-Memory Cache
+  const cacheKey = `search:${promptText}:${pageNum}:${pageSize}`;
+  if (searchCache.has(cacheKey)) {
+    recordCacheHit();
+    console.log(`[Cache Hit] Serving Page ${pageNum} for "${promptText}" instantly from LRU cache (< 1ms).`);
+    return searchCache.get(cacheKey);
+  }
+  recordCacheMiss();
 
   // Build token set
   const rawTokens = promptText.split(/[\s,]+/).filter(t => t.length > 2);
@@ -129,17 +140,27 @@ export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPrefe
 
   console.log(`[SemanticSearch] Serving Page ${validPage}/${totalPages} (${pageSlice.length} games of ${totalMatches} total). Generating AI rationales on-demand...`);
 
-  // Generate AI rationales ONLY for the current page slice on-demand
+  // Generate AI rationales ONLY for the current page slice on-demand (using LRU cache)
   const resultsWithRationale = await Promise.all(
     pageSlice.map(async (game) => {
-      // If rationale is already present (e.g. LLM-generated), keep it
-      const rationale = game.rationale ||
-        await generateRecommendationRationale(
-          userPrompt,
-          game.title,
-          game.genre,
-          game.matchedTagsArray?.length > 0 ? game.matchedTagsArray : [genreToken || 'games']
-        );
+      const rationaleKey = `rationale:${promptText}:${(game.title || '').toLowerCase()}`;
+      let rationale = game.rationale;
+
+      if (!rationale) {
+        if (rationaleCache.has(rationaleKey)) {
+          rationale = rationaleCache.get(rationaleKey);
+        } else {
+          rationale = await generateRecommendationRationale(
+            userPrompt,
+            game.title,
+            game.genre,
+            game.matchedTagsArray?.length > 0 ? game.matchedTagsArray : [genreToken || 'games']
+          );
+          if (rationale) {
+            rationaleCache.set(rationaleKey, rationale);
+          }
+        }
+      }
 
       return {
         id: game.id || `game_${Math.random().toString(36).substr(2, 9)}`,
@@ -159,7 +180,7 @@ export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPrefe
     })
   );
 
-  return {
+  const payload = {
     recommendations: resultsWithRationale,
     pagination: {
       currentPage: validPage,
@@ -172,4 +193,9 @@ export async function searchAndRankGames(userPrompt, parsedAttrs = {}, userPrefe
       endIndex: Math.min(startIndex + pageSlice.length, totalMatches)
     }
   };
+
+  // Cache the complete page payload for instant future pagination & re-queries
+  searchCache.set(cacheKey, payload);
+
+  return payload;
 }

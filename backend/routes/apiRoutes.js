@@ -4,6 +4,7 @@ import { generateGameConfig } from '../../ai/gameCodeGenerator.js';
 import { synthesizeCustomGameCode, autoRepairGameCode } from '../../ai/codeSynthesizer.js';
 import { searchAndRankGames } from '../services/semanticSearch.js';
 import { HistoryStore } from '../services/historyStore.js';
+import { searchCache, codeSynthesisCache, getCacheStats, recordCacheHit, recordCacheMiss } from '../services/cacheService.js';
 
 const router = express.Router();
 
@@ -18,6 +19,18 @@ router.post('/recommend', async (req, res) => {
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Valid prompt text is required' });
     }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const pageSize = Math.max(1, parseInt(limit, 10) || 6);
+    const cacheKey = `recommend:${prompt.toLowerCase().trim()}:${pageNum}:${pageSize}`;
+
+    // 0. Top-Level Route In-Memory Cache Check (< 1ms)
+    if (searchCache.has(cacheKey)) {
+      recordCacheHit();
+      console.log(`[API /recommend Cache Hit] Serving Page ${pageNum} for "${prompt}" in < 1ms.`);
+      return res.json(searchCache.get(cacheKey));
+    }
+    recordCacheMiss();
 
     const userPrefs = req.body.preferences || HistoryStore.getPreferences();
 
@@ -70,7 +83,7 @@ router.post('/recommend', async (req, res) => {
       gameConfig: gameConfig
     });
 
-    res.json({
+    const responsePayload = {
       success: true,
       prompt: prompt,
       attributes: attributes,
@@ -80,7 +93,12 @@ router.post('/recommend', async (req, res) => {
       gameConfig: gameConfig,
       recommendations: recommendations,
       pagination: pagination
-    });
+    };
+
+    // Cache the complete payload
+    searchCache.set(cacheKey, responsePayload);
+
+    res.json(responsePayload);
   } catch (error) {
     console.error('[API /recommend] Error:', error);
     res.status(500).json({ error: 'Failed to process recommendation request', details: error.message });
@@ -122,7 +140,24 @@ router.post('/generate-code', async (req, res) => {
       return res.status(400).json({ error: 'userPrompt or tweakRequest is required' });
     }
 
+    // Check In-Memory Code Synthesis Cache (for fresh game generations)
+    const isNewGen = !previousCode && !tweakRequest;
+    const cacheKey = isNewGen ? `code:${(userPrompt || '').toLowerCase().trim()}` : null;
+
+    if (cacheKey && codeSynthesisCache.has(cacheKey)) {
+      recordCacheHit();
+      const cached = codeSynthesisCache.get(cacheKey);
+      console.log(`[Cache Hit] Serving synthesized code for "${userPrompt}" from LRU cache (< 1ms).`);
+      return res.json(cached);
+    }
+    if (isNewGen) recordCacheMiss();
+
     const result = await synthesizeCustomGameCode(userPrompt, previousCode, tweakRequest);
+
+    if (result.success && result.code && cacheKey) {
+      codeSynthesisCache.set(cacheKey, result);
+    }
+
     res.json(result);
   } catch (error) {
     console.error('[API /generate-code] Error:', error);
@@ -156,6 +191,17 @@ router.post('/auto-repair', async (req, res) => {
 router.get('/history', (req, res) => {
   const history = HistoryStore.getHistory();
   res.json({ success: true, history });
+});
+
+/**
+ * GET /api/cache-stats
+ * Real-time LRU Cache Telemetry & Hit-Ratio Metrics
+ */
+router.get('/cache-stats', (req, res) => {
+  res.json({
+    success: true,
+    stats: getCacheStats()
+  });
 });
 
 router.delete('/history', (req, res) => {

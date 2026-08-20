@@ -1,4 +1,5 @@
 import { callOllamaLLM } from './ollamaClient.js';
+import { attributeCache, recordCacheHit, recordCacheMiss } from '../backend/services/cacheService.js';
 
 // Archetypes that can be dynamically rendered as playable web prototypes
 export const GENERATABLE_ARCHETYPES = [
@@ -24,6 +25,14 @@ export async function parsePromptAttributes(userPrompt) {
   if (!promptText) {
     return getFallbackAttributes('Default Arcade Exploration');
   }
+
+  // 1. Check in-memory Attribute Cache
+  const cacheKey = `attr:${promptText.toLowerCase()}`;
+  if (attributeCache.has(cacheKey)) {
+    recordCacheHit();
+    return attributeCache.get(cacheKey);
+  }
+  recordCacheMiss();
 
   const systemMessage = `You are an expert game developer and game taxonomy parser.
 Parse the user's natural language game request into a valid JSON object with the following fields:
@@ -67,6 +76,7 @@ Rules:
       // Sanitize fields
       parsed.isGeneratable = Boolean(parsed.isGeneratable && parsed.archetype !== 'REC_ONLY');
       parsed.promptText = promptText;
+      attributeCache.set(cacheKey, parsed);
       return parsed;
     } catch (parseError) {
       console.warn('[AttributeParser] Failed to parse JSON from LLM response, invoking rule engine fallback:', parseError.message);
@@ -74,7 +84,9 @@ Rules:
   }
 
   // Fallback rule-based parsing if LLM is unavailable or returned non-JSON
-  return getFallbackAttributes(promptText);
+  const fallback = getFallbackAttributes(promptText);
+  attributeCache.set(cacheKey, fallback);
+  return fallback;
 }
 
 /**

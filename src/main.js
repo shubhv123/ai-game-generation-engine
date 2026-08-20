@@ -131,13 +131,28 @@ window.doSearch = async function(page = 1) {
   window._app.lastSearchPrompt = prompt;
   window._app.currentSearchPage = page;
 
-  if (page === 1) {
-    window.showLoading('Searching...', `🧠 AI parsing: "${prompt.slice(0, 40)}..."`);
-  }
+  if (!window._app.clientSearchCache) window._app.clientSearchCache = {};
+  const cacheKey = `${prompt.toLowerCase()}:${page}`;
 
   const resultsArea = document.getElementById('search-results-area');
   const emptyState = document.getElementById('search-empty-state');
   const ctaBanner = document.getElementById('generate-cta-banner');
+
+  // Instant Client-Side Cache Hit (0ms - zero loading delay when flipping back)
+  if (window._app.clientSearchCache[cacheKey]) {
+    const cachedData = window._app.clientSearchCache[cacheKey];
+    window._app.lastSearchResult = cachedData;
+    if (emptyState) emptyState.classList.add('hidden');
+    renderSearchResults(cachedData);
+    if (page > 1 && resultsArea) {
+      resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return;
+  }
+
+  if (page === 1) {
+    window.showLoading('Searching...', `🧠 AI parsing: "${prompt.slice(0, 40)}..."`);
+  }
 
   if (emptyState) emptyState.classList.add('hidden');
   if (ctaBanner) ctaBanner.classList.add('hidden');
@@ -173,6 +188,7 @@ window.doSearch = async function(page = 1) {
     window._app.lastSearchResult = data;
 
     if (data && data.success) {
+      window._app.clientSearchCache[cacheKey] = data;
       renderSearchResults(data);
     } else {
       renderSearchResultsFallback(prompt);
