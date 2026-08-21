@@ -1,7 +1,7 @@
 import express from 'express';
 import { parsePromptAttributes, GENERATABLE_ARCHETYPES } from '../../ai/attributeParser.js';
 import { generateGameConfig } from '../../ai/gameCodeGenerator.js';
-import { synthesizeCustomGameCode, autoRepairGameCode } from '../../ai/codeSynthesizer.js';
+import { synthesizeCustomGameCode, synthesize2PMultiplayerGameCode, autoRepairGameCode } from '../../ai/codeSynthesizer.js';
 import { searchAndRankGames } from '../services/semanticSearch.js';
 import { HistoryStore } from '../services/historyStore.js';
 import { searchCache, codeSynthesisCache, getCacheStats, recordCacheHit, recordCacheMiss } from '../services/cacheService.js';
@@ -135,26 +135,36 @@ router.post('/generate', async (req, res) => {
  */
 router.post('/generate-code', async (req, res) => {
   try {
-    const { userPrompt, previousCode, tweakRequest } = req.body;
+    const { userPrompt, previousCode, tweakRequest, playerMode = '1P' } = req.body;
     if (!userPrompt && !tweakRequest) {
       return res.status(400).json({ error: 'userPrompt or tweakRequest is required' });
     }
 
+    const is2P = playerMode === '2P' || playerMode === '2P_MULTIPLAYER';
+
     // Check In-Memory Code Synthesis Cache (for fresh game generations)
     const isNewGen = !previousCode && !tweakRequest;
-    const cacheKey = isNewGen ? `code:${(userPrompt || '').toLowerCase().trim()}` : null;
+    const cacheKey = isNewGen ? `code:${is2P ? '2p:' : ''}${(userPrompt || '').toLowerCase().trim()}` : null;
 
     if (cacheKey && codeSynthesisCache.has(cacheKey)) {
       recordCacheHit();
       const cached = codeSynthesisCache.get(cacheKey);
-      console.log(`[Cache Hit] Serving synthesized code for "${userPrompt}" from LRU cache (< 1ms).`);
+      console.log(`[Cache Hit] Serving synthesized ${is2P ? '2P' : '1P'} code for "${userPrompt}" from LRU cache (< 1ms).`);
       return res.json(cached);
     }
     if (isNewGen) recordCacheMiss();
 
-    const result = await synthesizeCustomGameCode(userPrompt, previousCode, tweakRequest);
+    const result = is2P
+      ? await synthesize2PMultiplayerGameCode(userPrompt, previousCode, tweakRequest)
+      : await synthesizeCustomGameCode(userPrompt, previousCode, tweakRequest);
 
-    if (result.success && result.code && cacheKey) {
+    // 1P caching behavior (unchanged)
+    if (!is2P && result.success && result.code && cacheKey) {
+      codeSynthesisCache.set(cacheKey, result);
+    }
+
+    // 2P cache only stores semantically-validated code to avoid permanently serving a broken bot to every user who requests this prompt.
+    if (is2P && result.success && result.code && cacheKey && result.semanticallyValidated === true) {
       codeSynthesisCache.set(cacheKey, result);
     }
 
@@ -164,6 +174,8 @@ router.post('/generate-code', async (req, res) => {
     res.status(500).json({ error: 'Failed to generate custom game code', details: error.message });
   }
 });
+
+
 
 /**
  * POST /api/auto-repair

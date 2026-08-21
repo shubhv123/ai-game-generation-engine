@@ -37,7 +37,17 @@ window._app = {
 // ============================================
 //   NAVIGATION
 // ============================================
-window.navigateTo = function(page) {
+function updateNavLinks(page) {
+  document.querySelectorAll('.nav-link').forEach(link => {
+    const attr = link.getAttribute('onclick') || '';
+    const match = attr.match(/navigateTo\('([^']+)'/);
+    if (match && match[1]) {
+      link.classList.toggle('active', match[1] === page);
+    }
+  });
+}
+
+window.navigateTo = function(page, submode = '1P') {
   const app = window._app;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const el = document.getElementById(`page-${page}`);
@@ -45,7 +55,11 @@ window.navigateTo = function(page) {
   app.currentPage = page;
 
   if (page === 'reel') {
-    window.arcadeReel.init();
+    if (!window.arcadeReel.initialized) {
+      window.arcadeReel.init(submode);
+    } else {
+      window.arcadeReel.setPlayerMode(submode);
+    }
     checkBackend();
   } else if (page === 'generate') {
     setTimeout(() => {
@@ -54,7 +68,11 @@ window.navigateTo = function(page) {
       }
     }, 100);
     checkBackend();
+  } else if (page === 'search') {
+    checkBackend();
   }
+  updateNavLinks(page);
+  window.scrollTo(0, 0);
 };
 
 window.setReelPrompt = function(prompt) {

@@ -81,8 +81,16 @@ Rules:
       }
       const parsed = JSON.parse(cleaned);
 
+      const GENERIC_EXCLUSIONS = new Set([
+        'keyboard', 'mouse', 'controller', 'friend', 'friends', 'player', 'players',
+        'couch', 'party', 'game', 'games', 'play', 'screen', 'pc', 'console', 'mobile',
+        'button', 'buttons', 'chaotic', 'fun', 'good', 'best', 'new', 'old'
+      ]);
+
       // Sanitize fields
-      parsed.entities = Array.isArray(parsed.entities) ? parsed.entities.filter(Boolean) : [];
+      parsed.entities = Array.isArray(parsed.entities)
+        ? parsed.entities.map(e => String(e).toLowerCase().trim()).filter(e => e && !GENERIC_EXCLUSIONS.has(e))
+        : [];
       parsed.hardConstraints = parsed.hardConstraints || {};
       parsed.isGeneratable = Boolean(parsed.isGeneratable && parsed.archetype !== 'REC_ONLY');
       parsed.promptText = promptText;

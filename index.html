@@ -505,6 +505,46 @@
     .dim-btn { flex: 1; padding: 8px; border-radius: 6px; border: none; background: none; color: #64748b; font-family: var(--pixel-font-title); font-size: 9px; }
     .dim-btn.active { background: var(--pixel-blue); color: #fff; }
 
+    .reel-mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .reel-mode-btn {
+      padding: 5px 11px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-family: var(--pixel-font-title);
+      font-size: 9px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .reel-mode-btn:hover {
+      color: #e2e8f0;
+    }
+    .reel-mode-btn:active {
+      transform: scale(0.96);
+    }
+    .reel-mode-btn.active {
+      background: var(--pixel-blue);
+      color: #fff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+
     .gen-prompt-textarea {
       width: 100%; background: #f8fafc; border: 3px solid var(--pixel-blue);
       border-radius: 12px; padding: 12px; color: #0f172a;
@@ -656,10 +696,10 @@
     }
     .player-buttons-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
       width: 100%;
-      max-width: 680px;
+      max-width: 520px;
     }
     .btn-player-count {
       position: relative;
@@ -735,9 +775,10 @@
     .reel-container {
       display: block;
       flex: 1;
-      overflow-y: auto;
+      overflow-y: scroll;
+      overflow-x: hidden;
       scroll-snap-type: y mandatory;
-      padding: 20px 20px 60px 20px;
+      padding: 20px 20px 80px 20px;
       position: relative;
     }
     .reel-cards-track {
@@ -751,7 +792,6 @@
     }
     .reel-card {
       scroll-snap-align: center;
-      scroll-snap-stop: always;
       width: 100%;
       height: calc(100vh - 120px);
       min-height: 540px;
@@ -1361,9 +1401,9 @@
       }
     };
 
-    window.mobileNavigateTo = function(page) {
+    window.mobileNavigateTo = function(page, submode) {
       window.toggleMobileNav();
-      window.navigateTo(page);
+      window.navigateTo(page, submode || '1P');
     };
 
     window.updateActiveNavLinks = function(page) {
@@ -1445,20 +1485,10 @@
               <span class="player-btn-title">1 PLAYER</span>
               <span class="player-btn-badge badge-live">ARCADE REEL</span>
             </button>
-            <button class="btn-player-count disabled-player-btn" title="2-Player mode is coming soon!" disabled>
+            <button class="btn-player-count active-player-btn glow-pulse-green" onclick="navigateTo('reel', '2P')">
               <span class="player-btn-icon">👥</span>
               <span class="player-btn-title">2 PLAYERS</span>
-              <span class="player-btn-badge badge-soon">COMING SOON</span>
-            </button>
-            <button class="btn-player-count disabled-player-btn" title="3-Player mode is coming soon!" disabled>
-              <span class="player-btn-icon">⚔️</span>
-              <span class="player-btn-title">3 PLAYERS</span>
-              <span class="player-btn-badge badge-soon">COMING SOON</span>
-            </button>
-            <button class="btn-player-count disabled-player-count disabled-player-btn" title="4-Player mode is coming soon!" disabled>
-              <span class="player-btn-icon">👑</span>
-              <span class="player-btn-title">4 PLAYERS</span>
-              <span class="player-btn-badge badge-soon">COMING SOON</span>
+              <span class="player-btn-badge badge-live">LOCAL / VS BOT</span>
             </button>
           </div>
         </div>
@@ -1479,7 +1509,7 @@
   </div>
 
   <!-- =============================================
-       PAGE: 1-PLAYER ARCADE REEL (DISCOVERY FEED)
+       PAGE: ARCADE REEL (1P SOLO & 2P MULTIPLAYER)
   ============================================= -->
   <div id="page-reel" class="page">
     <!-- Navbar -->
@@ -1493,8 +1523,11 @@
           <button class="nav-link" onclick="navigateTo('generate')">Generate</button>
         </div>
       </div>
-      <div class="nav-right">
-        <div class="reel-nav-badge-pill" style="font-family:var(--pixel-font-title);font-size:9px;padding:4px 10px;border-radius:6px;background:rgba(56,189,248,0.2);color:#38bdf8;border:1px solid #38bdf8">1-PLAYER REEL</div>
+      <div class="nav-right" style="gap:8px">
+        <div class="reel-mode-toggle">
+          <button class="reel-mode-btn active" id="reel-mode-1p" onclick="window.arcadeReel.setPlayerMode('1P')">👤 1P SOLO</button>
+          <button class="reel-mode-btn" id="reel-mode-2p" onclick="window.arcadeReel.setPlayerMode('2P')">👥 2P MULTI</button>
+        </div>
         <button class="nav-icon-btn" onclick="toggleHistoryDrawer()">HISTORY</button>
         <button class="nav-hamburger-btn" onclick="toggleMobileNav()" title="Open Navigation Menu">
           <span></span>
@@ -1768,9 +1801,13 @@
         <span class="mobile-nav-icon">🏠</span>
         <span>HOME</span>
       </button>
-      <button class="mobile-nav-item" onclick="mobileNavigateTo('reel')">
-        <span class="mobile-nav-icon">📱</span>
-        <span>ARCADE REEL (1-PLAYER)</span>
+      <button class="mobile-nav-item" onclick="mobileNavigateTo('reel', '1P')">
+        <span class="mobile-nav-icon">👤</span>
+        <span>ARCADE REEL (1P SOLO)</span>
+      </button>
+      <button class="mobile-nav-item" onclick="mobileNavigateTo('reel', '2P')">
+        <span class="mobile-nav-icon">👥</span>
+        <span>ARCADE REEL (2P MULTIPLAYER)</span>
       </button>
       <button class="mobile-nav-item" onclick="mobileNavigateTo('search')">
         <span class="mobile-nav-icon">🔍</span>

@@ -43,10 +43,12 @@ Rules:
 
   const entities = Array.isArray(parsedAttributes?.entities) ? parsedAttributes.entities : [];
   const platformConstraint = parsedAttributes?.hardConstraints?.platform || parsedAttributes?.platform;
+  const isMultiplayer = Boolean(parsedAttributes?.isMultiplayer) || /\b(2-player|2 player|two player|co-op|coop|couch co-op|party|shared keyboard|split screen)\b/i.test(userPrompt || '');
   
   let constraintPrompt = `User wants: "${userPrompt}"`;
-  if (entities.length > 0 || platformConstraint) {
+  if (entities.length > 0 || platformConstraint || isMultiplayer) {
     constraintPrompt += `\nCRITICAL CONSTRAINTS TO PRIORITIZE:`;
+    if (isMultiplayer) constraintPrompt += `\n- CO-OP / MULTIPLAYER MANDATE: The user specifically requested 2-player / couch co-op / party games. You MUST recommend real games that genuinely feature local multiplayer, couch co-op, shared screen, or 2-player party modes (e.g. Overcooked, Cuphead, It Takes Two, Rayman Legends, TowerFall, Duck Game, Lovers in a Dangerous Spacetime, Moving Out, Stick Fight). Do NOT recommend purely single-player games.`;
     if (entities.length > 0) constraintPrompt += `\n- Specific Subjects/Character/Entities: ${entities.join(', ')} (You MUST recommend games that literally feature this character/animal/theme, e.g. Chameleon Twist for chameleon on N64)`;
     if (platformConstraint) constraintPrompt += `\n- Specific Platform/Console: ${platformConstraint}`;
   }

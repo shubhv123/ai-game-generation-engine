@@ -1,67 +1,84 @@
 import { CURATED_GAMES } from './engine/curatedGames.js';
+import { CURATED_2P_GAMES } from './engine/curated2PGames.js';
+import { getMultiplayerInjectSnippet } from './engine/multiplayerSDK.js';
 
 /**
  * Arcade Reel Manager
- * Implements 1-Player discovery feed, strict single-iframe lifecycle,
- * and session-scoped live in-place code refinement.
+ * Supports 1-Player Solo & 2-Player Local/VS Computer discovery feeds,
+ * strict single-iframe lifecycle, and live AI game generation & refinement.
  */
 export class ArcadeReelManager {
   constructor(apiBase) {
     this.apiBase = apiBase;
+    this.playerMode = '1P'; // '1P' | '2P'
     this.deck = [];
     this.currentIndex = 0;
     this.isRefinerOpen = false;
-    this.activeIframes = new Map(); // cardIndex -> iframeElement
+    this.activeIframes = new Map();
     this.initialized = false;
   }
 
-  init() {
-    if (this.initialized) {
-      setTimeout(() => this.goToCard(0), 50);
-      return;
-    }
+  init(mode = '1P') {
+    this.playerMode = mode;
     this.initialized = true;
+    this.updateNavbarButtons(mode);
 
-    // Load curated games into session deck with canonical copies
-    this.deck = CURATED_GAMES.map(g => ({
+    this.loadDeckForMode(this.playerMode);
+    this.renderDeckUI();
+    this.updateCardIframeLifecycle(0);
+    this.setupScrollObserver();
+  }
+
+  updateNavbarButtons(mode) {
+    const targetMode = mode || this.playerMode || '1P';
+    const btn1p = document.getElementById('reel-mode-1p');
+    const btn2p = document.getElementById('reel-mode-2p');
+    if (btn1p) btn1p.classList.toggle('active', targetMode === '1P');
+    if (btn2p) btn2p.classList.toggle('active', targetMode === '2P');
+    document.querySelectorAll('.reel-mode-1p-btn').forEach(b => b.classList.toggle('active', targetMode === '1P'));
+    document.querySelectorAll('.reel-mode-2p-btn').forEach(b => b.classList.toggle('active', targetMode === '2P'));
+  }
+
+  setPlayerMode(mode) {
+    this.updateNavbarButtons(mode);
+    if (this.playerMode === mode && this.deck.length > 0) return;
+    this.playerMode = mode;
+
+    this.loadDeckForMode(mode);
+    this.renderDeckUI();
+    this.goToCard(0);
+    this.updateCardIframeLifecycle(0);
+  }
+
+  loadDeckForMode(mode) {
+    const is2P = mode === '2P';
+    const sourceGames = is2P ? CURATED_2P_GAMES : CURATED_GAMES;
+
+    this.deck = sourceGames.map((g) => ({
       id: g.id,
       title: g.title,
       genre: g.genre,
       desc: g.desc,
       controls: g.controls,
       canonicalCode: g.code,
-      currentCode: g.code, // forked on edit
+      currentCode: g.code,
       isCustom: false,
+      is2P: is2P,
+      mpMode: 'bot', // 'bot' | 'local'
       chatHistory: []
     }));
 
-    // Append 1 "GENERATE YOUR OWN" card
+    // Append Generator Card (Card 7)
     this.deck.push({
-      id: 'card_generate_special',
-      title: 'Generate Your Own Game',
-      genre: 'AI Synthesis',
-      desc: 'Type any custom game description in natural language and watch the AI synthesize a live playable prototype on the fly.',
-      controls: 'Custom Rules & Mechanics',
-      isGenerateCard: true
-    });
-
-    this.renderDeckUI();
-    this.updateCardIframeLifecycle(0);
-    this.setupScrollObserver();
-
-    // Keyboard navigation (Arrow Up / Down)
-    window.addEventListener('keydown', (e) => {
-      const reelPage = document.getElementById('page-reel');
-      if (!reelPage || !reelPage.classList.contains('active')) return;
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-
-      if (e.code === 'ArrowDown' || e.code === 'KeyS') {
-        e.preventDefault();
-        this.nextCard();
-      } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
-        e.preventDefault();
-        this.prevCard();
-      }
+      id: is2P ? 'card_generate_2p_special' : 'card_generate_special',
+      title: is2P ? 'Generate 2-Player Game' : 'Generate Your Own Game',
+      genre: is2P ? '2P AI Synthesis' : 'AI Synthesis',
+      desc: is2P
+        ? 'Describe any 2-player game. AI will synthesize dual keyboard/touch controls and VS Computer bot mode!'
+        : 'Type any custom game description in natural language and watch the AI synthesize a live playable prototype.',
+      controls: is2P ? 'P1: WASD vs P2: Arrows / Bot AI' : 'Custom Rules & Mechanics',
+      isGenerateCard: true,
+      is2P: is2P
     });
   }
 
@@ -73,7 +90,7 @@ export class ArcadeReelManager {
 
     this._observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.4) {
           const idx = parseInt(entry.target.getAttribute('data-index'), 10);
           if (!isNaN(idx) && idx !== this.currentIndex) {
             this.currentIndex = idx;
@@ -84,7 +101,7 @@ export class ArcadeReelManager {
       });
     }, {
       root: container,
-      threshold: [0.5]
+      threshold: [0.4]
     });
 
     document.querySelectorAll('.reel-card').forEach(card => {
@@ -96,31 +113,43 @@ export class ArcadeReelManager {
     const container = document.getElementById('reel-cards-track');
     if (!container) return;
 
+    const is2PMode = this.playerMode === '2P';
+
     container.innerHTML = this.deck.map((card, idx) => {
       if (card.isGenerateCard) {
         return `
           <div class="reel-card generate-card-item" id="reel-card-${idx}" data-index="${idx}">
             <div class="reel-card-header">
               <div style="display:flex;align-items:center;gap:10px">
-                <span class="reel-badge badge-ai">⚡ AI STUDIO</span>
+                <span class="reel-badge badge-ai">${is2PMode ? '👥 2P GAME AI STUDIO' : '⚡ 1P AI STUDIO'}</span>
                 <h2 class="reel-card-title">${card.title}</h2>
               </div>
-              <div class="reel-card-genre">1-PLAYER LOCKED</div>
+              <div class="reel-card-genre">${is2PMode ? '2-PLAYER / VS BOT' : '1-PLAYER SOLO'}</div>
             </div>
             <div class="reel-gen-card-body">
               <div class="reel-gen-sparkle">✨</div>
-              <h3 style="font-family:var(--pixel-font-title);font-size:16px;color:#fff;margin-bottom:8px">DESCRIBE ANY GAME TO SYNTHESIZE</h3>
-              <p style="font-size:13px;color:#94a3b8;max-width:520px;margin-bottom:16px;line-height:1.5">
-                Our Ollama LLM will generate pure HTML5 Canvas code with ZzFX sound effects and inject it as a new live card into this discovery reel.
+              <h3 style="font-family:var(--pixel-font-title);font-size:16px;color:#fff;margin-bottom:8px">
+                ${is2PMode ? 'DESCRIBE ANY 2-PLAYER GAME TO SYNTHESIZE' : 'DESCRIBE ANY GAME TO SYNTHESIZE'}
+              </h3>
+              <p style="font-size:13px;color:#94a3b8;max-width:540px;margin-bottom:16px;line-height:1.5">
+                ${is2PMode 
+                  ? 'Our AI will generate complete dual controls (P1 WASD vs P2 Arrows) and responsive VS Computer Bot AI!' 
+                  : 'Our Ollama LLM will generate pure HTML5 Canvas code with ZzFX sound effects and inject it as a new live card.'}
               </p>
               
               <div style="width:100%;max-width:580px;display:flex;flex-direction:column;gap:12px">
-                <textarea id="reel-custom-prompt-input" rows="3" placeholder="e.g. 2D underwater submarine shooter where I dodge electric jellyfish and collect glowing sunken treasure with torpedo sound effects..." style="width:100%;padding:14px;border-radius:10px;background:#0f172a;border:2px solid #38bdf8;color:#fff;font-family:monospace;font-size:13px;resize:none"></textarea>
+                <textarea id="reel-custom-prompt-input" rows="3" placeholder="${is2PMode ? 'e.g. 2-player wizard duel where players shoot fireballs and block with magic shields...' : 'e.g. 2D underwater submarine shooter where I dodge electric jellyfish...'}" style="width:100%;padding:14px;border-radius:10px;background:#0f172a;border:2px solid #38bdf8;color:#fff;font-family:monospace;font-size:13px;resize:none"></textarea>
                 
                 <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-                  <button class="reel-prompt-chip" onclick="setReelPrompt('Cyberpunk motorcycle combat dodging laser barriers and shooting drones')">🏍️ Cyber Moto</button>
-                  <button class="reel-prompt-chip" onclick="setReelPrompt('Pixel archery target shooter with moving bullseyes and wind physics')">🏹 Archery Master</button>
-                  <button class="reel-prompt-chip" onclick="setReelPrompt('Vertical jumping ninja climbing glowing pagoda towers with grappling hook')">🥷 Tower Climber</button>
+                  ${is2PMode ? `
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('2-player air hockey duel with glowing pucks and power smashes')">🏓 Neon Air Hockey</button>
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('2-player wizard magic duel shooting fire and ice spells')">🧙‍♂️ Wizard Duel</button>
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('2-player sumo bumper clash with bouncing physics')">🔴 Sumo Clash</button>
+                  ` : `
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('Cyberpunk motorcycle combat dodging laser barriers')">🏍️ Cyber Moto</button>
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('Pixel archery target shooter with moving bullseyes')">🏹 Archery Master</button>
+                    <button class="reel-prompt-chip" onclick="setReelPrompt('Vertical jumping ninja climbing pagoda towers')">🥷 Tower Climber</button>
+                  `}
                 </div>
 
                 <button class="btn-moss-start glow-pulse-green" id="btn-reel-synth" onclick="window.arcadeReel.synthesizeFromReel()" style="padding:12px 24px;font-size:13px;margin-top:6px">
@@ -144,17 +173,26 @@ export class ArcadeReelManager {
             <div class="reel-controls-hint">🕹️ ${card.controls}</div>
           </div>
 
+          ${card.is2P && !card.isCustom ? `
+          <!-- 2-Player Mode Selector Bar (Curated Games) -->
+          <div class="reel-mp-bar" id="reel-mp-bar-${idx}" style="display:flex;align-items:center;gap:8px;background:#0f172a;border-bottom:2px solid #1e293b;padding:6px 14px;font-family:var(--pixel-font-title);font-size:9px">
+            <span style="color:#94a3b8">PLAY MODE:</span>
+            <button class="mp-mode-btn ${card.mpMode === 'bot' ? 'active' : ''}" id="mp-btn-bot-${idx}" onclick="window.arcadeReel.setCardMPMode(${idx}, 'bot')" style="padding:4px 10px;border-radius:4px;border:1px solid #38bdf8;background:${card.mpMode === 'bot' ? '#38bdf8' : 'transparent'};color:${card.mpMode === 'bot' ? '#0f172a' : '#38bdf8'};cursor:pointer">🤖 VS COMPUTER</button>
+            <button class="mp-mode-btn ${card.mpMode === 'local' ? 'active' : ''}" id="mp-btn-local-${idx}" onclick="window.arcadeReel.setCardMPMode(${idx}, 'local')" style="padding:4px 10px;border-radius:4px;border:1px solid #22c55e;background:${card.mpMode === 'local' ? '#22c55e' : 'transparent'};color:${card.mpMode === 'local' ? '#0f172a' : '#22c55e'};cursor:pointer">👥 LOCAL 2-PLAYER</button>
+          </div>
+          ` : ''}
+
           <!-- Stage Viewport -->
           <div class="reel-stage" id="reel-stage-${idx}">
             <div class="reel-tap-overlay" id="reel-tap-${idx}" onclick="window.arcadeReel.startCardPlay(${idx})">
               <div class="tap-play-box">
                 <div class="tap-play-icon">▶</div>
                 <div class="tap-play-text">CLICK TO PLAY</div>
-                <div class="tap-play-sub">Enables 8-bit ZzFX audio & controls</div>
+                <div class="tap-play-sub">${card.is2P ? 'P1: WASD • P2: Arrows / Bot' : 'Enables 8-bit ZzFX audio & controls'}</div>
               </div>
             </div>
             <div class="reel-iframe-host" id="reel-iframe-host-${idx}">
-              <!-- Iframe injected dynamically per lifecycle -->
+              <!-- Iframe injected dynamically -->
             </div>
           </div>
 
@@ -185,10 +223,10 @@ export class ArcadeReelManager {
               <div class="win-close-btn" style="width:20px;height:20px;font-size:9px" onclick="event.stopPropagation(); window.arcadeReel.closeRefiner(${idx})">✕</div>
             </div>
             <div class="refiner-chat-messages" id="reel-chat-messages-${idx}">
-              <div class="chat-bubble ai">Type any feature tweak below (e.g. "add combo multiplier", "make enemies shoot lasers") to update this game in-place!</div>
+              <div class="chat-bubble ai">Type any feature tweak below (e.g. "make paddles 2x faster", "add missile pickups") to update this game in-place!</div>
             </div>
             <div class="refiner-input-row">
-              <input type="text" id="reel-tweak-input-${idx}" placeholder="e.g. 'Add a speed boost pickup item'" onkeydown="if(event.key==='Enter') window.arcadeReel.submitRefinement(${idx})">
+              <input type="text" id="reel-tweak-input-${idx}" placeholder="e.g. 'Make player 1 faster'" onkeydown="if(event.key==='Enter') window.arcadeReel.submitRefinement(${idx})">
               <button class="btn-moss-start" style="padding:6px 14px;font-size:10px" onclick="window.arcadeReel.submitRefinement(${idx})">
                 REFINE →
               </button>
@@ -200,6 +238,54 @@ export class ArcadeReelManager {
 
     this.updateCardIndicator();
     setTimeout(() => this.setupScrollObserver(), 50);
+  }
+
+  setCardMPMode(cardIndex, mode) {
+    const card = this.deck[cardIndex];
+    if (!card) return;
+
+    card.mpMode = mode;
+
+    // Update UI button highlights
+    const btnBot = document.getElementById(`mp-btn-bot-${cardIndex}`);
+    const btnLocal = document.getElementById(`mp-btn-local-${cardIndex}`);
+
+    if (btnBot) {
+      btnBot.style.background = mode === 'bot' ? '#38bdf8' : 'transparent';
+      btnBot.style.color = mode === 'bot' ? '#0f172a' : '#38bdf8';
+    }
+    if (btnLocal) {
+      btnLocal.style.background = mode === 'local' ? '#22c55e' : 'transparent';
+      btnLocal.style.color = mode === 'local' ? '#0f172a' : '#22c55e';
+    }
+
+    // Hide tap overlay and focus iframe
+    const tapOverlay = document.getElementById(`reel-tap-${cardIndex}`);
+    if (tapOverlay) tapOverlay.style.display = 'none';
+
+    // Notify iframe
+    const host = document.getElementById(`reel-iframe-host-${cardIndex}`);
+    const iframe = host?.querySelector('iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'MP_SET_MODE', mode }, '*');
+      setTimeout(() => {
+        try { iframe.contentWindow?.focus({ preventScroll: true }); } catch (e) {}
+      }, 50);
+
+      // Verify that the injected MP SDK processed the mode change
+      setTimeout(() => {
+        try {
+          const ackCount = iframe.contentWindow?.MP?.modeChangeAckCount;
+          if (typeof ackCount === 'number' && ackCount === 0) {
+            window.postMessage({
+              type: 'REEL_GAME_ERROR',
+              cardIndex,
+              error: 'Game code is not reading window.MP — bot toggle had no effect'
+            }, '*');
+          }
+        } catch (e) {}
+      }, 300);
+    }
   }
 
   updateCardIndicator() {
@@ -221,29 +307,17 @@ export class ArcadeReelManager {
     }
   }
 
-  goToCard(targetIndex) {
-    if (targetIndex < 0 || targetIndex >= this.deck.length) return;
-    this.currentIndex = targetIndex;
-
-    const container = document.getElementById('reel-container');
-    const targetEl = document.getElementById(`reel-card-${targetIndex}`);
-    if (container && targetEl) {
-      container.scrollTo({
-        top: targetEl.offsetTop - 20,
-        behavior: 'smooth'
-      });
+  goToCard(index) {
+    if (index < 0 || index >= this.deck.length) return;
+    const cardEl = document.getElementById(`reel-card-${index}`);
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.currentIndex = index;
+      this.updateCardIndicator();
+      this.updateCardIframeLifecycle(index);
     }
-
-    this.updateCardIndicator();
-    this.updateCardIframeLifecycle(targetIndex);
   }
 
-  /**
-   * Strict Iframe Lifecycle:
-   * 1. Only CURRENT card's iframe is mounted and running.
-   * 2. Next card (targetIndex + 1) may be preloaded.
-   * 3. Any card with abs(index - targetIndex) > 1 must have its iframe completely removed from DOM.
-   */
   updateCardIframeLifecycle(centerIndex) {
     for (let i = 0; i < this.deck.length; i++) {
       if (this.deck[i].isGenerateCard) continue;
@@ -254,17 +328,14 @@ export class ArcadeReelManager {
       const dist = Math.abs(i - centerIndex);
 
       if (dist === 0) {
-        // Current Card: Ensure mounted
         if (!host.querySelector('iframe')) {
           this.mountCardIframe(i, false);
         }
       } else if (dist === 1 && i === centerIndex + 1) {
-        // Preload next card ahead
         if (!host.querySelector('iframe')) {
           this.mountCardIframe(i, false);
         }
       } else {
-        // More than 1 away: Completely remove from DOM to free WebGL / memory
         host.innerHTML = '';
         const tapOverlay = document.getElementById(`reel-tap-${i}`);
         if (tapOverlay) tapOverlay.style.display = 'flex';
@@ -286,6 +357,8 @@ export class ArcadeReelManager {
 
     const scriptTagStart = '<script>';
     const scriptTagEnd = '<\/script>';
+
+    const mpSnippet = card.is2P ? getMultiplayerInjectSnippet(card.mpMode || 'bot') : '';
 
     const fullHtml = `
       <!DOCTYPE html>
@@ -319,107 +392,26 @@ export class ArcadeReelManager {
           canvas {
             width: 100% !important;
             height: 100% !important;
-            max-width: 100%;
-            max-height: 100%;
-            aspect-ratio: 4 / 3;
+            max-width: 800px;
+            max-height: 600px;
+            aspect-ratio: 4/3;
             object-fit: contain;
-            background: #111827;
             border-radius: 12px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.7);
-            cursor: pointer;
-            touch-action: none;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
+            background: #0f172a;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            display: block;
           }
         </style>
         ${scriptTagStart}
+          ${mpSnippet}
+
           window.onerror = function(msg, url, line, col, err) {
             var errMsg = msg || (err && err.message) || 'Syntax or Runtime Error';
             window.parent.postMessage({ type: 'REEL_GAME_ERROR', cardIndex: ${cardIndex}, error: errMsg + (line ? ' (line ' + line + ')' : '') }, '*');
             return false;
           };
 
-          // Virtual Coordinate Scaler Hook:
-          // Maps touch/mouse coordinates transparently to the 800x600 internal canvas grid
-          function _scaleEventCoords(e, canvas) {
-            if (!canvas) return;
-            var rect = canvas.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            var touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
-            if (touch && typeof touch.clientX === 'number') {
-              var scaleX = canvas.width / rect.width;
-              var scaleY = canvas.height / rect.height;
-              var sx = (touch.clientX - rect.left) * scaleX;
-              var sy = (touch.clientY - rect.top) * scaleY;
-              try {
-                Object.defineProperty(e, 'offsetX', { get: function() { return sx; }, configurable: true });
-                Object.defineProperty(e, 'offsetY', { get: function() { return sy; }, configurable: true });
-                Object.defineProperty(e, 'canvasX', { get: function() { return sx; }, configurable: true });
-                Object.defineProperty(e, 'canvasY', { get: function() { return sy; }, configurable: true });
-              } catch(err) {}
-            }
-          }
-
-          var _origAddEventListener = HTMLCanvasElement.prototype.addEventListener;
-          HTMLCanvasElement.prototype.addEventListener = function(type, listener, options) {
-            var canvas = this;
-            if (['mousedown', 'mouseup', 'mousemove', 'click', 'touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointermove'].indexOf(type) !== -1) {
-              var wrappedListener = function(e) {
-                _scaleEventCoords(e, canvas);
-                listener.call(this, e);
-              };
-              return _origAddEventListener.call(this, type, wrappedListener, options);
-            }
-            return _origAddEventListener.call(this, type, listener, options);
-          };
-
-          // Universal Mobile Touch-to-Keyboard & Swipe Gesture Bridge:
-          // Enables immediate touch playability for all keyboard-controlled games
-          (function setupUniversalTouchBridge() {
-            var startX = 0, startY = 0, startTime = 0;
-            function dispatchKey(key, code) {
-              window.dispatchEvent(new KeyboardEvent('keydown', { key: key, code: code, bubbles: true }));
-              setTimeout(function() {
-                window.dispatchEvent(new KeyboardEvent('keyup', { key: key, code: code, bubbles: true }));
-              }, 120);
-            }
-
-            window.addEventListener('touchstart', function(e) {
-              if (e.touches && e.touches[0]) {
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                startTime = Date.now();
-              }
-            }, { passive: true });
-
-            window.addEventListener('touchend', function(e) {
-              if (!e.changedTouches || !e.changedTouches[0]) return;
-              var endX = e.changedTouches[0].clientX;
-              var endY = e.changedTouches[0].clientY;
-              var dx = endX - startX;
-              var dy = endY - startY;
-              var dt = Date.now() - startTime;
-              var absDx = Math.abs(dx);
-              var absDy = Math.abs(dy);
-
-              if (dt < 400 && (absDx > 25 || absDy > 25)) {
-                // Swipe detected
-                if (absDx > absDy) {
-                  if (dx > 0) { dispatchKey('ArrowRight', 'ArrowRight'); dispatchKey('d', 'KeyD'); }
-                  else { dispatchKey('ArrowLeft', 'ArrowLeft'); dispatchKey('a', 'KeyA'); }
-                } else {
-                  if (dy > 0) { dispatchKey('ArrowDown', 'ArrowDown'); dispatchKey('s', 'KeyS'); }
-                  else { dispatchKey('ArrowUp', 'ArrowUp'); dispatchKey('w', 'KeyW'); }
-                }
-              } else if (dt < 300 && absDx < 15 && absDy < 15) {
-                // Quick Tap -> Space / Shoot / Jump
-                dispatchKey(' ', 'Space');
-              }
-            }, { passive: true });
-          })();
-
-          // ZzFX Micro Synthesizer
-          window.zzfxX = null;
+          window.zzfxX = window.zzfxX || null;
           var zzfxR = 44100;
           function _getZzfxCtx() {
             if (!window.zzfxX) {
@@ -449,7 +441,6 @@ export class ArcadeReelManager {
           };
 
           function zzfxG(q,k,c,e,t,u,j,v,m,r,s,h,w,x,y,z,A,l,B,C) {
-            q=q===undefined?1:q; k=k===undefined?.05:k; c=c===undefined?220:c; e=e===undefined?0:e; t=t===undefined?0:t; u=u===undefined?.1:u; j=j===undefined?0:j; v=v===undefined?1:v; m=m===undefined?0:m; r=r===undefined?0:r; s=s===undefined?0:s; h=h===undefined?0:h; w=w===undefined?0:w; x=x===undefined?0:x; y=y===undefined?0:y; z=z===undefined?0:z; A=A===undefined?0:A; l=l===undefined?1:l; B=B===undefined?0:B; C=C===undefined?0:C;
             var b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
             t=t*zzfxR|0;u=u*zzfxR|0;j=j*zzfxR|0;A=A*zzfxR|0;B=B*zzfxR|0;m*=(500*b)/zzfxR**3;x*=b/zzfxR;s*=b/zzfxR;h=h*zzfxR|0;w=w*zzfxR|0;z=z*zzfxR|0;C*=b/zzfxR;
             for(var K=t+u+j+A+B|0,L=0;L<K;++L){
@@ -482,6 +473,23 @@ export class ArcadeReelManager {
               window.zzfx.apply(null, sound);
             } catch(e) {}
           };
+
+          // Render loop heartbeat watchdog
+          window._renderedFrames = 0;
+          var _origRAF = window.requestAnimationFrame;
+          window.requestAnimationFrame = function(cb) {
+            window._renderedFrames = (window._renderedFrames || 0) + 1;
+            return _origRAF.call(window, cb);
+          };
+          setTimeout(function() {
+            if (!window._renderedFrames || window._renderedFrames === 0) {
+              window.parent.postMessage({
+                type: 'REEL_GAME_ERROR',
+                cardIndex: ${cardIndex},
+                error: 'Game loop failed to render frames'
+              }, '*');
+            }
+          }, 1500);
         ${scriptTagEnd}
       </head>
       <body>
@@ -502,7 +510,7 @@ ${card.currentCode}
       const tapOverlay = document.getElementById(`reel-tap-${cardIndex}`);
       if (tapOverlay) tapOverlay.style.display = 'none';
       setTimeout(() => {
-        try { iframe.contentWindow?.focus(); } catch (e) {}
+        try { iframe.contentWindow?.focus({ preventScroll: true }); } catch (e) {}
       }, 100);
     }
   }
@@ -515,11 +523,9 @@ ${card.currentCode}
     const iframe = host?.querySelector('iframe');
     if (iframe) {
       try {
-        iframe.contentWindow?.focus();
-        iframe.contentDocument?.getElementById('gameCanvas')?.click();
+        iframe.contentWindow?.focus({ preventScroll: true });
+        iframe.contentDocument?.getElementById('gameCanvas')?.focus({ preventScroll: true });
       } catch (e) {}
-    } else {
-      this.mountCardIframe(cardIndex, true);
     }
   }
 
@@ -527,8 +533,11 @@ ${card.currentCode}
     const drawer = document.getElementById(`reel-refiner-drawer-${cardIndex}`);
     if (!drawer) return;
     const isHidden = drawer.classList.contains('hidden');
-    document.querySelectorAll('.reel-refiner-drawer').forEach(d => d.classList.add('hidden'));
-    if (isHidden) drawer.classList.remove('hidden');
+    drawer.classList.toggle('hidden', !isHidden);
+    if (isHidden) {
+      const input = document.getElementById(`reel-tweak-input-${cardIndex}`);
+      if (input) setTimeout(() => input.focus(), 100);
+    }
   }
 
   closeRefiner(cardIndex) {
@@ -538,14 +547,12 @@ ${card.currentCode}
 
   async submitRefinement(cardIndex) {
     const card = this.deck[cardIndex];
-    if (!card) return;
-
     const input = document.getElementById(`reel-tweak-input-${cardIndex}`);
     const tweakText = input ? input.value.trim() : '';
-    if (!tweakText) return;
+    if (!tweakText || !card) return;
 
-    if (input) input.value = '';
-    this.addCardChatMessage(cardIndex, `🛠️ Tweak: "${tweakText}"`, 'user');
+    this.addCardChatMessage(cardIndex, tweakText, 'user');
+    input.value = '';
 
     window.showLoading('Refining Game...', `🧠 Ollama LLM applying: "${tweakText.slice(0, 30)}..." to ${card.title}`);
 
@@ -556,14 +563,15 @@ ${card.currentCode}
         body: JSON.stringify({
           userPrompt: card.title + ' - ' + card.desc,
           previousCode: card.currentCode,
-          tweakRequest: tweakText
+          tweakRequest: tweakText,
+          playerMode: card.is2P ? '2P' : '1P'
         })
       });
       const data = await res.json();
       window.hideLoading();
 
       if (data.success && data.code) {
-        card.currentCode = data.code; // fork updated
+        card.currentCode = data.code;
         this.mountCardIframe(cardIndex, true);
         this.addCardChatMessage(cardIndex, `✅ Successfully applied tweak: "${tweakText}"`, 'ai');
       } else {
@@ -599,13 +607,17 @@ ${card.currentCode}
     const promptText = promptInput ? promptInput.value.trim() : '';
     if (!promptText) return;
 
-    window.showLoading('Synthesizing Game...', `🧠 Ollama LLM synthesizing custom 1-player game for "${promptText.slice(0, 30)}..."`);
+    const is2P = this.playerMode === '2P';
+    window.showLoading('Synthesizing Game...', `🧠 Ollama LLM synthesizing custom ${is2P ? '2-player' : '1-player'} game for "${promptText.slice(0, 30)}..."`);
 
     try {
       const res = await fetch(`${this.apiBase}/generate-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPrompt: promptText })
+        body: JSON.stringify({
+          userPrompt: promptText,
+          playerMode: is2P ? '2P' : '1P'
+        })
       });
       const data = await res.json();
       window.hideLoading();
@@ -614,16 +626,17 @@ ${card.currentCode}
         const newCard = {
           id: 'custom_' + Date.now(),
           title: promptText.slice(0, 30) + (promptText.length > 30 ? '...' : ''),
-          genre: 'Custom 1P Game',
+          genre: is2P ? 'Custom 2P Game' : 'Custom 1P Game',
           desc: promptText,
-          controls: 'WASD / Space / Mouse Click & Movement',
+          controls: is2P ? 'P1: WASD vs P2: Arrows / Bot AI' : 'WASD / Space / Mouse Click & Movement',
           canonicalCode: data.code,
           currentCode: data.code,
           isCustom: true,
+          is2P: is2P,
+          mpMode: 'bot',
           chatHistory: []
         };
 
-        // Insert before the generate card (which is at the end)
         const insertIndex = this.deck.length - 1;
         this.deck.splice(insertIndex, 0, newCard);
 
@@ -631,7 +644,6 @@ ${card.currentCode}
         this.goToCard(insertIndex);
         this.startCardPlay(insertIndex);
 
-        // Save to History
         if (window.saveToHistory) window.saveToHistory(promptText);
       } else {
         alert(data.error || 'Failed to synthesize custom game code. Please try again!');
@@ -650,151 +662,23 @@ ${card.currentCode}
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${card.title} - Venator Arcade Standalone Edition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${card.title} - Venator Arcade</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 100%;
-      height: 100%;
-      background: #090d16;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #fff;
-      touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    #game-container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 10px;
-    }
-    canvas {
-      width: 100% !important;
-      height: auto !important;
-      max-width: 800px;
-      max-height: 85vh;
-      aspect-ratio: 4 / 3;
-      object-fit: contain;
-      background: #111827;
-      border: 3px solid #548b28;
-      border-radius: 14px;
-      box-shadow: 0 12px 36px rgba(0,0,0,0.8);
-      cursor: pointer;
-      touch-action: none;
-    }
+    body { background: #0f172a; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 12px; }
+    h1 { font-size: 20px; color: #38bdf8; margin-bottom: 4px; }
+    p { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+    canvas { max-width: 800px; max-height: 600px; width: 100%; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); background: #090d16; }
   </style>
-  <script>
-    // Virtual Coordinate Scaler Hook:
-    function _scaleEventCoords(e, canvas) {
-      if (!canvas) return;
-      var rect = canvas.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
-      var touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
-      if (touch && typeof touch.clientX === 'number') {
-        var scaleX = canvas.width / rect.width;
-        var scaleY = canvas.height / rect.height;
-        var sx = (touch.clientX - rect.left) * scaleX;
-        var sy = (touch.clientY - rect.top) * scaleY;
-        try {
-          Object.defineProperty(e, 'offsetX', { get: function() { return sx; }, configurable: true });
-          Object.defineProperty(e, 'offsetY', { get: function() { return sy; }, configurable: true });
-          Object.defineProperty(e, 'canvasX', { get: function() { return sx; }, configurable: true });
-          Object.defineProperty(e, 'canvasY', { get: function() { return sy; }, configurable: true });
-        } catch(err) {}
-      }
-    }
-
-    var _origAddEventListener = HTMLCanvasElement.prototype.addEventListener;
-    HTMLCanvasElement.prototype.addEventListener = function(type, listener, options) {
-      var canvas = this;
-      if (['mousedown', 'mouseup', 'mousemove', 'click', 'touchstart', 'touchmove', 'touchend'].indexOf(type) !== -1) {
-        var wrappedListener = function(e) {
-          _scaleEventCoords(e, canvas);
-          listener.call(this, e);
-        };
-        return _origAddEventListener.call(this, type, wrappedListener, options);
-      }
-      return _origAddEventListener.call(this, type, listener, options);
-    };
-
-    window.zzfxX = null;
-    var zzfxR = 44100;
-    function _getZzfxCtx() {
-      if (!window.zzfxX) {
-        var AC = window.AudioContext || window.webkitAudioContext;
-        if (AC) window.zzfxX = new AC();
-      }
-      if (window.zzfxX && window.zzfxX.state === 'suspended') window.zzfxX.resume();
-      return window.zzfxX;
-    }
-    ['click', 'mousedown', 'keydown', 'touchstart'].forEach(function(evt) {
-      window.addEventListener(evt, function() { _getZzfxCtx(); }, { once: true, passive: true });
-    });
-    window.zzfx = function() {
-      var t = Array.prototype.slice.call(arguments);
-      var ctx = _getZzfxCtx();
-      if (!ctx) return null;
-      var p = zzfxG.apply(null, t);
-      var src = ctx.createBufferSource();
-      var buf = ctx.createBuffer(1, p.length, zzfxR);
-      buf.getChannelData(0).set(p);
-      src.buffer = buf;
-      src.connect(ctx.destination);
-      src.start();
-      return src;
-    };
-    function zzfxG(q,k,c,e,t,u,j,v,m,r,s,h,w,x,y,z,A,l,B,C) {
-      q=q===undefined?1:q; k=k===undefined?.05:k; c=c===undefined?220:c; e=e===undefined?0:e; t=t===undefined?0:t; u=u===undefined?.1:u; j=j===undefined?0:j; v=v===undefined?1:v; m=m===undefined?0:m; r=r===undefined?0:r; s=s===undefined?0:s; h=h===undefined?0:h; w=w===undefined?0:w; x=x===undefined?0:x; y=y===undefined?0:y; z=z===undefined?0:z; A=A===undefined?0:A; l=l===undefined?1:l; B=B===undefined?0:B; C=C===undefined?0:C;
-      var b=2*Math.PI,H=v*=(500*b)/zzfxR/zzfxR,J=(1-k)*zzfxR|0,D=c*=((1+2*e*Math.random()-e)*b)/zzfxR,p=[],E=0,n=0,a=0,G=1,d=0,F=0,g=0,N=0,P=0;
-      t=t*zzfxR|0;u=u*zzfxR|0;j=j*zzfxR|0;A=A*zzfxR|0;B=B*zzfxR|0;m*=(500*b)/zzfxR**3;x*=b/zzfxR;s*=b/zzfxR;h=h*zzfxR|0;w=w*zzfxR|0;z=z*zzfxR|0;C*=b/zzfxR;
-      for(var K=t+u+j+A+B|0,L=0;L<K;++L){
-        ++N>=h&&(N=0,d=2*Math.random()-1);d&&(G=d>0?1:-1);
-        p[L]=(L<t?L/t:L<t+u?1-(L-t)/u*(1-y):L<t+u+j?y:L<K-B?(K-B-L)/A*y:0)*(L<t+u+j+A?Math.sin(F):1)*(L<t+u?(1-k)+k*Math.cos(L/J*b):1)*Math.sin(a);
-        a+=D+=v+=m;F+=x;g+=s;P+=C;q&&(p[L]=p[L]*q);
-      }
-      return p;
-    }
-    var ZZFX_PRESETS = {
-      laser: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
-      shoot: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
-      bullet: [1.2,0,850,.03,.25,.5,1,1.2,0,-9.4,0,0,0,.1,0,0,0,.6,.04,0],
-      explosion: [1.5,0,25,.04,0,.4,4,1.9,0,.1,0,0,.05,0,0,0,0,0,-.01,0],
-      hit: [1.4,0,80,.01,.05,.15,1,1.2,-9,0,0,0,0,.1,0,0,0,.5,0,0],
-      coin: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
-      pickup: [1.2,0,537,.02,.02,.22,1,1.59,-6.9,.5,0,0,0,1,0,.1,0,0,0,0],
-      jump: [1.3,0,140,.01,.1,.2,1,1.5,-4.4,0,0,0,0,.2,0,0,0,-.04,0,0],
-      powerup: [1.2,0,250,.01,.05,.2,1,1.1,-7,0,0,0,0,.1,0,0,0,.4,0,0],
-      gameover: [1.5,0,120,.05,.1,.3,1,1.1,-10,0,0,0,0,.1,0,0,0,.7,0,0],
-      win: [1.3,0,523,.05,.05,.35,1,1.3,-5,0,0,0,0,.1,0,0,0,.6,0,0],
-      click: [0.8,0,300,0,.02,.02,0,1.5,-10,0,0,0,0,0,0,0,0,0,0,0]
-    };
-    window.playSound = function(type) {
-      try {
-        var key = (type || 'click').toLowerCase();
-        var sound = ZZFX_PRESETS[key] || ZZFX_PRESETS.click;
-        window.zzfx.apply(null, sound);
-      } catch(e) {}
-    };
-  </script>
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-  </div>
+  <h1>${card.title}</h1>
+  <p>${card.controls}</p>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
   <script>
 ${card.currentCode}
-  </script>
+  <\/script>
 </body>
 </html>`;
 
@@ -802,10 +686,8 @@ ${card.currentCode}
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${card.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_venator.html`;
-    document.body.appendChild(a);
+    a.download = `${card.title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_venator.html`;
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
